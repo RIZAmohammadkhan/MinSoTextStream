@@ -38,6 +38,13 @@ export const likes = pgTable("likes", {
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
+export const follows = pgTable("follows", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  followerId: varchar("follower_id").notNull().references(() => users.id),
+  followingId: varchar("following_id").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
@@ -61,6 +68,13 @@ export type Post = typeof posts.$inferSelect;
 export type InsertComment = z.infer<typeof insertCommentSchema>;
 export type Comment = typeof comments.$inferSelect;
 export type Like = typeof likes.$inferSelect;
+export type Follow = typeof follows.$inferSelect;
+
+export type UserWithFollowInfo = User & {
+  isFollowing: boolean;
+  followerCount: number;
+  followingCount: number;
+};
 
 export type PostWithAuthor = Post & {
   author: User;

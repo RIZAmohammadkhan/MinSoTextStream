@@ -1,6 +1,7 @@
-import { Home, User, ArrowUp } from "lucide-react";
+import { Home, User, ArrowUp, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
+import { useLocation } from "wouter";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -10,6 +11,7 @@ interface LayoutProps {
 
 export default function Layout({ children, user, onLogout }: LayoutProps) {
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [location, setLocation] = useLocation();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -53,10 +55,18 @@ export default function Layout({ children, user, onLogout }: LayoutProps) {
             <h1 className="text-3xl font-bold text-accent-beige tracking-tight" data-testid="text-logo">MinSO</h1>
             <nav className="flex items-center space-x-8">
               <button 
-                className="text-beige-text hover:text-accent-beige transition-colors duration-200"
+                onClick={() => setLocation('/')}
+                className={`transition-colors duration-200 ${location === '/' ? 'text-accent-beige' : 'text-beige-text hover:text-accent-beige'}`}
                 data-testid="button-home"
               >
                 <Home size={22} />
+              </button>
+              <button 
+                onClick={() => setLocation('/search')}
+                className={`transition-colors duration-200 ${location === '/search' ? 'text-accent-beige' : 'text-beige-text hover:text-accent-beige'}`}
+                data-testid="button-search"
+              >
+                <Search size={22} />
               </button>
               <button 
                 onClick={handleLogout}

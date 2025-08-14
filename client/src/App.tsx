@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useState, useEffect } from "react";
 import Home from "./pages/home";
 import Auth from "./pages/auth";
+import SearchPage from "./pages/search";
 
 function Router() {
   const [user, setUser] = useState<any>(null);
@@ -36,6 +37,7 @@ function Router() {
 
   return (
     <Switch>
+      <Route path="/search" component={() => <SearchPage user={user} onLogout={() => setUser(null)} />} />
       <Route path="/" component={() => <Home user={user} onLogout={() => setUser(null)} />} />
       <Route component={() => <Home user={user} onLogout={() => setUser(null)} />} />
     </Switch>

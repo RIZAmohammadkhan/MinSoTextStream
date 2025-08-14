@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type Post, type InsertPost, type Comment, type InsertComment, type Like, type PostWithAuthor, type CommentWithAuthor } from "@shared/schema";
+import { type User, type InsertUser, type Post, type InsertPost, type Comment, type InsertComment, type Like, type Follow, type PostWithAuthor, type CommentWithAuthor, type UserWithFollowInfo } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -20,6 +20,12 @@ export interface IStorage {
   togglePostLike(userId: string, postId: string): Promise<boolean>;
   toggleCommentLike(userId: string, commentId: string): Promise<boolean>;
   getUserLikes(userId: string): Promise<Like[]>;
+  
+  // Follow methods
+  searchUsers(query: string, currentUserId: string, limit: number): Promise<UserWithFollowInfo[]>;
+  toggleFollow(followerId: string, followingId: string): Promise<boolean>;
+  getFollowers(userId: string): Promise<User[]>;
+  getFollowing(userId: string): Promise<User[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -27,12 +33,14 @@ export class MemStorage implements IStorage {
   private posts: Map<string, Post>;
   private comments: Map<string, Comment>;
   private likes: Map<string, Like>;
+  private follows: Map<string, Follow>;
 
   constructor() {
     this.users = new Map();
     this.posts = new Map();
     this.comments = new Map();
     this.likes = new Map();
+    this.follows = new Map();
     
     // Add some seed data for testing
     this.seedData();
@@ -104,6 +112,48 @@ export class MemStorage implements IStorage {
     
     this.comments.set(comment1.id, comment1);
     this.comments.set(comment2.id, comment2);
+    
+    // Create some follow relationships
+    const follow1: Follow = {
+      id: "follow-1",
+      followerId: humanUser.id,
+      followingId: aiUser.id,
+      createdAt: new Date(Date.now() - 3600000 * 12) // 12 hours ago
+    };
+    
+    this.follows.set(follow1.id, follow1);
+    
+    // Add more sample users for search testing
+    const aiUser2: User = {
+      id: "ai-2",
+      username: "gpt_helper",
+      password: "password123",
+      bio: "AI specialized in creative writing and problem-solving assistance",
+      isAI: true,
+      createdAt: new Date(Date.now() - 86400000 * 3) // 3 days ago
+    };
+    
+    const humanUser2: User = {
+      id: "human-2",
+      username: "sarah_dev",
+      password: "password123",
+      bio: "Frontend developer with a passion for accessible design",
+      isAI: false,
+      createdAt: new Date(Date.now() - 86400000 * 4) // 4 days ago
+    };
+    
+    this.users.set(aiUser2.id, aiUser2);
+    this.users.set(humanUser2.id, humanUser2);
+    
+    // More follow relationships
+    const follow2: Follow = {
+      id: "follow-2",
+      followerId: aiUser.id,
+      followingId: humanUser2.id,
+      createdAt: new Date(Date.now() - 3600000 * 6) // 6 hours ago
+    };
+    
+    this.follows.set(follow2.id, follow2);
   }
 
   async getUser(id: string): Promise<User | undefined> {
@@ -272,6 +322,77 @@ export class MemStorage implements IStorage {
 
   async getUserLikes(userId: string): Promise<Like[]> {
     return Array.from(this.likes.values()).filter(like => like.userId === userId);
+  }
+
+  async searchUsers(query: string, currentUserId: string, limit: number = 10): Promise<UserWithFollowInfo[]> {
+    const users = Array.from(this.users.values())
+      .filter(user => 
+        user.id !== currentUserId && 
+        user.username.toLowerCase().includes(query.toLowerCase())
+      )
+      .slice(0, limit);
+
+    return users.map(user => {
+      const isFollowing = Array.from(this.follows.values()).some(
+        follow => follow.followerId === currentUserId && follow.followingId === user.id
+      );
+      
+      const followerCount = Array.from(this.follows.values()).filter(
+        follow => follow.followingId === user.id
+      ).length;
+      
+      const followingCount = Array.from(this.follows.values()).filter(
+        follow => follow.followerId === user.id
+      ).length;
+
+      return {
+        ...user,
+        isFollowing,
+        followerCount,
+        followingCount
+      };
+    });
+  }
+
+  async toggleFollow(followerId: string, followingId: string): Promise<boolean> {
+    if (followerId === followingId) return false;
+
+    const existingFollow = Array.from(this.follows.values()).find(
+      follow => follow.followerId === followerId && follow.followingId === followingId
+    );
+
+    if (existingFollow) {
+      // Unfollow
+      this.follows.delete(existingFollow.id);
+      return false;
+    } else {
+      // Follow
+      const followId = randomUUID();
+      const follow: Follow = {
+        id: followId,
+        followerId,
+        followingId,
+        createdAt: new Date()
+      };
+      this.follows.set(followId, follow);
+      return true;
+    }
+  }
+
+  async getFollowers(userId: string): Promise<User[]> {
+    const followerIds = Array.from(this.follows.values())
+      .filter(follow => follow.followingId === userId)
+      .map(follow => follow.followerId);
+
+    return followerIds.map(id => this.users.get(id)).filter(user => user !== undefined) as User[];
+  }
+
+  async getFollowing(userId: string): Promise<User[]> {
+    const followingIds = Array.from(this.follows.values())
+      .filter(follow => follow.followerId === userId)
+      .map(follow => follow.followingId);
+
+    return followingIds.map(id => this.users.get(id)).filter(user => user !== undefined) as User[];
   }
 }
 

@@ -213,5 +213,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Search users
+  app.get('/api/users/search', requireAuth, async (req: any, res) => {
+    try {
+      const { q: query } = req.query;
+      if (!query || typeof query !== 'string') {
+        return res.status(400).json({ message: 'Query parameter is required' });
+      }
+
+      const users = await storage.searchUsers(query, req.user.userId, 20);
+      res.json(users);
+    } catch (error) {
+      console.error('Search users error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
+  // Toggle follow
+  app.post('/api/users/:userId/follow', requireAuth, async (req: any, res) => {
+    try {
+      const { userId } = req.params;
+      const isFollowing = await storage.toggleFollow(req.user.userId, userId);
+      
+      broadcast({ type: 'USER_FOLLOWED', followerId: req.user.userId, followingId: userId, isFollowing });
+      
+      res.json({ isFollowing });
+    } catch (error) {
+      console.error('Toggle follow error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
+  // Get followers
+  app.get('/api/users/:userId/followers', requireAuth, async (req: any, res) => {
+    try {
+      const { userId } = req.params;
+      const followers = await storage.getFollowers(userId);
+      res.json(followers);
+    } catch (error) {
+      console.error('Get followers error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
+  // Get following
+  app.get('/api/users/:userId/following', requireAuth, async (req: any, res) => {
+    try {
+      const { userId } = req.params;
+      const following = await storage.getFollowing(userId);
+      res.json(following);
+    } catch (error) {
+      console.error('Get following error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
   return httpServer;
 }
