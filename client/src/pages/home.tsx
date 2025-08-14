@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Layout from "../components/layout";
 import ComposePost from "../components/compose-post";
 import PostCard from "../components/post-card";
@@ -14,6 +14,7 @@ interface HomeProps {
 }
 
 export default function Home({ user, onLogout }: HomeProps) {
+  const [feedType, setFeedType] = useState<'discover' | 'following'>('discover');
   const sessionId = localStorage.getItem('minso_session');
   
   const {
@@ -23,9 +24,10 @@ export default function Home({ user, onLogout }: HomeProps) {
     isFetchingNextPage,
     isLoading
   } = useInfiniteQuery({
-    queryKey: ['/api/posts'],
+    queryKey: ['/api/posts', feedType],
     queryFn: async ({ pageParam = 0 }) => {
-      const response = await fetch(`/api/posts?offset=${pageParam}&limit=10`, {
+      const feedParam = feedType === 'following' ? '&feed=following' : '';
+      const response = await fetch(`/api/posts?offset=${pageParam}&limit=10${feedParam}`, {
         headers: {
           'Authorization': `Bearer ${sessionId}`
         }
@@ -55,6 +57,8 @@ export default function Home({ user, onLogout }: HomeProps) {
       if (message.type === 'NEW_POST') {
         queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
       } else if (message.type === 'POST_LIKED') {
+        queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
+      } else if (message.type === 'POST_DELETED') {
         queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
       } else if (message.type === 'NEW_COMMENT') {
         queryClient.invalidateQueries({ queryKey: ['/api/posts', message.postId, 'comments'] });
@@ -96,6 +100,32 @@ export default function Home({ user, onLogout }: HomeProps) {
     <Layout user={user} onLogout={onLogout}>
       <main className="max-w-3xl mx-auto px-6 py-12">
         <ComposePost user={user} />
+        
+        {/* Feed Toggle */}
+        <div className="flex space-x-1 bg-subtle-border/30 rounded-lg p-1 mb-12">
+          <button
+            onClick={() => setFeedType('discover')}
+            className={`flex-1 px-6 py-3 rounded-md font-medium transition-colors duration-200 ${
+              feedType === 'discover'
+                ? 'bg-accent-beige text-dark-bg'
+                : 'text-beige-text hover:text-white'
+            }`}
+            data-testid="tab-discover"
+          >
+            Discover
+          </button>
+          <button
+            onClick={() => setFeedType('following')}
+            className={`flex-1 px-6 py-3 rounded-md font-medium transition-colors duration-200 ${
+              feedType === 'following'
+                ? 'bg-accent-beige text-dark-bg'
+                : 'text-beige-text hover:text-white'
+            }`}
+            data-testid="tab-following"
+          >
+            Following
+          </button>
+        </div>
         
         <div className="space-y-12">
           {allPosts.map((post: PostWithAuthor, index) => (

@@ -103,13 +103,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const offset = parseInt(req.query.offset as string) || 0;
       const limit = parseInt(req.query.limit as string) || 10;
+      const feed = req.query.feed as string; // 'following' or 'discover'
       
-      const posts = await storage.getPosts(offset, limit);
-      
-      // Get user likes if authenticated
       const sessionId = req.headers.authorization?.replace('Bearer ', '');
       const session = sessionId ? sessions.get(sessionId) : null;
       
+      let posts;
+      if (feed === 'following' && session) {
+        posts = await storage.getFollowingPosts(session.userId, offset, limit);
+      } else {
+        posts = await storage.getPosts(offset, limit);
+      }
+      
+      // Get user likes if authenticated
       if (session) {
         const userLikes = await storage.getUserLikes(session.userId);
         posts.forEach(post => {
@@ -137,6 +143,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(post);
     } catch (error) {
       res.status(400).json({ message: "Invalid input" });
+    }
+  });
+
+  app.delete("/api/posts/:postId", requireAuth, async (req: any, res) => {
+    try {
+      const { postId } = req.params;
+      const success = await storage.deletePost(postId, req.user.userId);
+      
+      if (!success) {
+        return res.status(403).json({ message: "You can only delete your own posts" });
+      }
+      
+      // Broadcast post deletion
+      broadcast({ type: 'POST_DELETED', postId });
+      
+      res.json({ success: true });
+    } catch (error) {
+      res.status(400).json({ message: "Failed to delete post" });
     }
   });
 

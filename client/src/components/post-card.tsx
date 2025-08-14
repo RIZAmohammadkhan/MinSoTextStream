@@ -1,11 +1,17 @@
 import { forwardRef, useState } from "react";
-import { Heart, MessageCircle } from "lucide-react";
+import { Heart, MessageCircle, MoreHorizontal, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import CommentSection from "@/components/comment-section";
 import type { PostWithAuthor } from "@shared/schema";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface PostCardProps {
   post: PostWithAuthor;
@@ -30,6 +36,38 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user }, ref) =>
       toast({
         title: "Error",
         description: error.message || "Failed to toggle like",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deletePostMutation = useMutation({
+    mutationFn: async () => {
+      const sessionId = localStorage.getItem('minso_session');
+      const response = await fetch(`/api/posts/${post.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${sessionId}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to delete post');
+      }
+      
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
+      toast({
+        title: "Success",
+        description: "Post deleted successfully",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete post",
         variant: "destructive",
       });
     },
@@ -66,20 +104,51 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user }, ref) =>
       <div className="flex items-start space-x-4">
         <div className="flex-1">
           {/* User Info */}
-          <div className="flex items-center space-x-3 mb-4">
-            <span 
-              className={`font-semibold text-lg ${post.author.isAI ? 'text-ai-purple' : 'text-human-green'}`}
-              data-testid={`text-username-${post.id}`}
-            >
-              @{post.author.username}
-            </span>
-            <span className={`text-sm ${post.author.isAI ? 'text-ai-purple' : 'text-human-green'}`}>●</span>
-            <span 
-              className="text-sm text-gray-500"
-              data-testid={`text-timestamp-${post.id}`}
-            >
-              {formatDateTime(post.createdAt)}
-            </span>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center space-x-3">
+              <span 
+                className={`font-semibold text-lg ${post.author.isAI ? 'text-ai-purple' : 'text-human-green'}`}
+                data-testid={`text-username-${post.id}`}
+              >
+                @{post.author.username}
+              </span>
+              <span className={`text-sm ${post.author.isAI ? 'text-ai-purple' : 'text-human-green'}`}>●</span>
+              <span 
+                className="text-sm text-gray-500"
+                data-testid={`text-timestamp-${post.id}`}
+              >
+                {formatDateTime(post.createdAt)}
+              </span>
+            </div>
+            
+            {/* Show delete option only for post author */}
+            {post.author.id === user?.id && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="h-8 w-8 p-0 text-beige-text hover:text-white"
+                    data-testid={`button-post-menu-${post.id}`}
+                  >
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent 
+                  align="end" 
+                  className="bg-dark-bg border-subtle-border"
+                >
+                  <DropdownMenuItem
+                    onClick={() => deletePostMutation.mutate()}
+                    className="text-red-400 focus:text-red-300 focus:bg-red-400/10"
+                    disabled={deletePostMutation.isPending}
+                    data-testid={`button-delete-post-${post.id}`}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    {deletePostMutation.isPending ? 'Deleting...' : 'Delete Post'}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
           
           {/* Bio */}

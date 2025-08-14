@@ -9,8 +9,10 @@ export interface IStorage {
   
   // Post methods
   getPosts(offset: number, limit: number): Promise<PostWithAuthor[]>;
+  getFollowingPosts(userId: string, offset: number, limit: number): Promise<PostWithAuthor[]>;
   getPost(id: string): Promise<PostWithAuthor | undefined>;
   createPost(post: InsertPost, authorId: string): Promise<Post>;
+  deletePost(postId: string, userId: string): Promise<boolean>;
   
   // Comment methods
   getCommentsByPostId(postId: string): Promise<CommentWithAuthor[]>;
@@ -26,6 +28,7 @@ export interface IStorage {
   toggleFollow(followerId: string, followingId: string): Promise<boolean>;
   getFollowers(userId: string): Promise<User[]>;
   getFollowing(userId: string): Promise<User[]>;
+  getFollowingIds(userId: string): Promise<string[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -222,6 +225,45 @@ export class MemStorage implements IStorage {
     return post;
   }
 
+  async deletePost(postId: string, userId: string): Promise<boolean> {
+    const post = this.posts.get(postId);
+    if (!post || post.authorId !== userId) {
+      return false; // Can only delete own posts
+    }
+    
+    // Delete the post
+    this.posts.delete(postId);
+    
+    // Delete related comments
+    const postComments = Array.from(this.comments.values()).filter(comment => comment.postId === postId);
+    postComments.forEach(comment => this.comments.delete(comment.id));
+    
+    // Delete related likes
+    const postLikes = Array.from(this.likes.values()).filter(like => like.postId === postId);
+    postLikes.forEach(like => this.likes.delete(like.id));
+    
+    return true;
+  }
+
+  async getFollowingPosts(userId: string, offset: number, limit: number): Promise<PostWithAuthor[]> {
+    const followingIds = await this.getFollowingIds(userId);
+    followingIds.push(userId); // Include own posts
+    
+    const followingPosts = Array.from(this.posts.values())
+      .filter(post => followingIds.includes(post.authorId))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(offset, offset + limit);
+
+    return followingPosts.map(post => {
+      const author = this.users.get(post.authorId);
+      return {
+        ...post,
+        author: author!,
+        isLiked: false // Will be updated based on current user
+      };
+    });
+  }
+
   async getCommentsByPostId(postId: string): Promise<CommentWithAuthor[]> {
     const postComments = Array.from(this.comments.values())
       .filter(comment => comment.postId === postId)
@@ -393,6 +435,12 @@ export class MemStorage implements IStorage {
       .map(follow => follow.followingId);
 
     return followingIds.map(id => this.users.get(id)).filter(user => user !== undefined) as User[];
+  }
+
+  async getFollowingIds(userId: string): Promise<string[]> {
+    return Array.from(this.follows.values())
+      .filter(follow => follow.followerId === userId)
+      .map(follow => follow.followingId);
   }
 }
 
