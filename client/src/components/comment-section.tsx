@@ -92,35 +92,35 @@ export default function CommentSection({ postId, user }: CommentSectionProps) {
 
   if (isLoading) {
     return (
-      <div className="mt-6 border-t border-subtle-border pt-6">
+      <div className="mt-8 border-t border-subtle-border pt-8">
         <div className="animate-pulse">
-          <div className="h-4 w-1/4 bg-gray-700 rounded mb-2"></div>
-          <div className="h-3 w-3/4 bg-gray-700 rounded mb-4"></div>
-          <div className="h-4 w-full bg-gray-700 rounded"></div>
+          <div className="h-4 w-1/4 bg-subtle-border rounded mb-2"></div>
+          <div className="h-3 w-3/4 bg-subtle-border rounded mb-4"></div>
+          <div className="h-4 w-full bg-subtle-border rounded"></div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="mt-6 border-t border-subtle-border pt-6" data-testid={`comments-${postId}`}>
+    <div className="mt-8 border-t border-subtle-border pt-8" data-testid={`comments-${postId}`}>
       {/* Existing Comments */}
       {comments?.map((comment: CommentWithAuthor) => (
         <div 
           key={comment.id} 
-          className="ml-4 mb-4 last:mb-0"
+          className="ml-6 mb-6 last:mb-0"
           data-testid={`comment-${comment.id}`}
         >
-          <div className="flex items-center space-x-2 mb-2">
+          <div className="flex items-center space-x-3 mb-3">
             <span 
-              className={`font-medium text-sm ${comment.author.isAI ? 'text-ai-purple' : 'text-human-green'}`}
+              className={`font-medium ${comment.author.isAI ? 'text-ai-purple' : 'text-human-green'}`}
               data-testid={`text-comment-username-${comment.id}`}
             >
               @{comment.author.username}
             </span>
-            <span className={`text-xs ${comment.author.isAI ? 'text-ai-purple' : 'text-human-green'}`}>●</span>
+            <span className={`text-sm ${comment.author.isAI ? 'text-ai-purple' : 'text-human-green'}`}>●</span>
             <span 
-              className="text-xs text-gray-500"
+              className="text-sm text-beige-text/60"
               data-testid={`text-comment-timestamp-${comment.id}`}
             >
               {formatTimeAgo(comment.createdAt)}
@@ -129,7 +129,7 @@ export default function CommentSection({ postId, user }: CommentSectionProps) {
           
           {comment.author.bio && (
             <div 
-              className="text-xs text-gray-400 mb-3 leading-relaxed"
+              className="text-sm text-beige-text/70 mb-4 leading-relaxed"
               data-testid={`text-comment-bio-${comment.id}`}
             >
               {comment.author.isAI ? 'AI' : 'Human'} • {comment.author.bio}
@@ -137,7 +137,7 @@ export default function CommentSection({ postId, user }: CommentSectionProps) {
           )}
           
           <div 
-            className="text-sm leading-relaxed text-gray-300 mb-3 whitespace-pre-wrap"
+            className="text-base leading-relaxed text-beige-text mb-4 whitespace-pre-wrap"
             data-testid={`text-comment-content-${comment.id}`}
           >
             {comment.content}
@@ -148,34 +148,34 @@ export default function CommentSection({ postId, user }: CommentSectionProps) {
             size="sm"
             onClick={() => likeCommentMutation.mutate(comment.id)}
             disabled={likeCommentMutation.isPending}
-            className="flex items-center space-x-2 text-gray-500 hover:text-beige-text transition-colors duration-200 p-0 h-auto"
+            className="flex items-center space-x-2 text-beige-text/60 hover:text-beige-text transition-colors duration-200 p-0 h-auto"
             data-testid={`button-like-comment-${comment.id}`}
           >
             <Heart 
-              size={12} 
+              size={14} 
               className={comment.isLiked ? "fill-accent-beige text-accent-beige" : ""}
             />
-            <span className="text-xs">{comment.likeCount}</span>
+            <span className="text-sm">{comment.likeCount}</span>
           </Button>
         </div>
       ))}
       
       {/* Add Comment Form */}
-      <div className="ml-4 mt-4">
+      <div className="ml-6 mt-6">
         <form onSubmit={handleSubmitComment}>
           <Textarea
             placeholder="Add a thoughtful response..."
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
-            className="w-full bg-transparent text-gray-300 placeholder-gray-600 resize-none border border-subtle-border rounded p-3 text-sm leading-relaxed"
-            rows={2}
+            className="w-full bg-transparent text-beige-text placeholder-beige-text/50 resize-none border border-subtle-border rounded p-4 text-base leading-relaxed"
+            rows={3}
             data-testid={`textarea-comment-${postId}`}
           />
-          <div className="flex justify-end mt-2">
+          <div className="flex justify-end mt-3">
             <Button
               type="submit"
               disabled={!newComment.trim() || createCommentMutation.isPending}
-              className="text-accent-beige hover:text-white text-sm font-medium transition-colors duration-200 bg-transparent p-0 h-auto"
+              className="bg-accent-beige text-dark-bg px-4 py-2 rounded-full font-medium hover:bg-accent-beige/90 transition-colors duration-200"
               data-testid={`button-reply-${postId}`}
             >
               {createCommentMutation.isPending ? "Replying..." : "Reply"}

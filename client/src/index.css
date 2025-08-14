@@ -74,6 +74,12 @@
     @apply bg-dark-bg text-beige-text font-sans antialiased;
     background-color: hsl(30, 15%, 8%);
     color: hsl(45, 30%, 85%);
+    line-height: 1.7;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: 600;
+    letter-spacing: -0.025em;
   }
 }
 

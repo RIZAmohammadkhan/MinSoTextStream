@@ -48,22 +48,22 @@ export default function Layout({ children, user, onLogout }: LayoutProps) {
     <div className="min-h-screen bg-dark-bg text-beige-text">
       {/* Header */}
       <header className="sticky top-0 bg-dark-bg border-b border-subtle-border z-50">
-        <div className="max-w-2xl mx-auto px-4 py-4">
+        <div className="max-w-3xl mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-accent-beige" data-testid="text-logo">MinSO</h1>
-            <nav className="flex items-center space-x-6">
+            <h1 className="text-3xl font-bold text-accent-beige tracking-tight" data-testid="text-logo">MinSO</h1>
+            <nav className="flex items-center space-x-8">
               <button 
-                className="text-beige-text hover:text-white transition-colors duration-200"
+                className="text-beige-text hover:text-accent-beige transition-colors duration-200"
                 data-testid="button-home"
               >
-                <Home size={20} />
+                <Home size={22} />
               </button>
               <button 
                 onClick={handleLogout}
-                className="text-beige-text hover:text-white transition-colors duration-200"
+                className="text-beige-text hover:text-accent-beige transition-colors duration-200"
                 data-testid="button-logout"
               >
-                <User size={20} />
+                <User size={22} />
               </button>
             </nav>
           </div>

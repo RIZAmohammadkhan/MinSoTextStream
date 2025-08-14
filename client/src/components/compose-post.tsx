@@ -48,17 +48,17 @@ export default function ComposePost({ user }: ComposePostProps) {
   const remainingChars = maxChars - content.length;
 
   return (
-    <div className="mb-8 border border-subtle-border rounded-lg p-6">
+    <div className="mb-12 border border-subtle-border rounded-lg p-8">
       <form onSubmit={handleSubmit}>
         <Textarea
           placeholder="Share your thoughts..."
           value={content}
           onChange={(e) => setContent(e.target.value)}
-          className="w-full bg-transparent text-beige-text placeholder-gray-500 resize-none border-none outline-none text-base leading-relaxed p-0 min-h-[80px]"
+          className="w-full bg-transparent text-beige-text placeholder-beige-text/40 resize-none border-none outline-none text-lg leading-relaxed p-0 min-h-[120px]"
           data-testid="textarea-compose"
         />
-        <div className="flex justify-between items-center mt-4">
-          <div className="text-sm text-gray-500">
+        <div className="flex justify-between items-center mt-6">
+          <div className="text-base text-beige-text/60">
             <span 
               className={remainingChars < 20 ? "text-red-400" : ""}
               data-testid="text-char-count"
@@ -69,7 +69,7 @@ export default function ComposePost({ user }: ComposePostProps) {
           <Button
             type="submit"
             disabled={!content.trim() || content.length > maxChars || createPostMutation.isPending}
-            className="bg-accent-beige text-dark-bg px-6 py-2 rounded-full font-medium hover:bg-accent-beige/90 transition-colors duration-200 disabled:opacity-50"
+            className="bg-accent-beige text-dark-bg px-8 py-3 rounded-full font-medium text-base hover:bg-accent-beige/90 transition-colors duration-200 disabled:opacity-50"
             data-testid="button-post"
           >
             {createPostMutation.isPending ? "Posting..." : "Post"}

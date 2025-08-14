@@ -54,17 +54,17 @@ export default function Auth({ onLogin }: AuthProps) {
 
   return (
     <div className="min-h-screen bg-dark-bg flex items-center justify-center p-4">
-      <Card className="w-full max-w-md bg-card border-subtle-border">
+      <Card className="w-full max-w-md bg-dark-bg border-subtle-border">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold text-accent-beige">MinSO</CardTitle>
-          <CardDescription className="text-beige-text/70">
+          <CardTitle className="text-3xl font-bold text-accent-beige mb-2">MinSO</CardTitle>
+          <CardDescription className="text-beige-text/70 text-base">
             {isLogin ? "Welcome back to the conversation" : "Join the minimal social network"}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <Label htmlFor="username" className="text-beige-text">Username</Label>
+              <Label htmlFor="username" className="text-beige-text text-base mb-2 block">Username</Label>
               <Input
                 id="username"
                 type="text"
@@ -72,13 +72,13 @@ export default function Auth({ onLogin }: AuthProps) {
                 value={formData.username}
                 onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value }))}
                 required
-                className="bg-dark-bg border-subtle-border text-beige-text"
+                className="bg-dark-bg border-subtle-border text-beige-text placeholder-beige-text/50 text-base p-3"
                 data-testid="input-username"
               />
             </div>
             
             <div>
-              <Label htmlFor="password" className="text-beige-text">Password</Label>
+              <Label htmlFor="password" className="text-beige-text text-base mb-2 block">Password</Label>
               <Input
                 id="password"
                 type="password"
@@ -86,7 +86,7 @@ export default function Auth({ onLogin }: AuthProps) {
                 value={formData.password}
                 onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
                 required
-                className="bg-dark-bg border-subtle-border text-beige-text"
+                className="bg-dark-bg border-subtle-border text-beige-text placeholder-beige-text/50 text-base p-3"
                 data-testid="input-password"
               />
             </div>
@@ -94,26 +94,26 @@ export default function Auth({ onLogin }: AuthProps) {
             {!isLogin && (
               <>
                 <div>
-                  <Label htmlFor="bio" className="text-beige-text">Bio</Label>
+                  <Label htmlFor="bio" className="text-beige-text text-base mb-2 block">Bio</Label>
                   <Textarea
                     id="bio"
                     placeholder="Tell us about yourself..."
                     value={formData.bio}
                     onChange={(e) => setFormData(prev => ({ ...prev, bio: e.target.value }))}
-                    className="bg-dark-bg border-subtle-border text-beige-text resize-none"
+                    className="bg-dark-bg border-subtle-border text-beige-text placeholder-beige-text/50 resize-none text-base p-3"
                     rows={3}
                     data-testid="input-bio"
                   />
                 </div>
 
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-3">
                   <Switch
                     id="is-ai"
                     checked={formData.isAI}
                     onCheckedChange={(checked) => setFormData(prev => ({ ...prev, isAI: checked }))}
                     data-testid="switch-is-ai"
                   />
-                  <Label htmlFor="is-ai" className="text-beige-text">
+                  <Label htmlFor="is-ai" className="text-beige-text text-base">
                     I am an AI
                   </Label>
                 </div>
@@ -122,7 +122,7 @@ export default function Auth({ onLogin }: AuthProps) {
 
             <Button
               type="submit"
-              className="w-full bg-accent-beige text-dark-bg hover:bg-accent-beige/90"
+              className="w-full bg-accent-beige text-dark-bg hover:bg-accent-beige/90 text-base py-3 font-medium"
               disabled={loading}
               data-testid="button-submit"
             >
@@ -130,11 +130,11 @@ export default function Auth({ onLogin }: AuthProps) {
             </Button>
           </form>
 
-          <div className="mt-4 text-center">
+          <div className="mt-6 text-center">
             <button
               type="button"
               onClick={() => setIsLogin(!isLogin)}
-              className="text-beige-text/70 hover:text-beige-text text-sm transition-colors"
+              className="text-beige-text/70 hover:text-beige-text text-base transition-colors"
               data-testid="button-toggle-mode"
             >
               {isLogin ? "Need an account? Sign up" : "Already have an account? Sign in"}

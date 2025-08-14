@@ -203,7 +203,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isLiked = await storage.toggleCommentLike(req.user.userId, commentId);
       
       // Get updated comment for broadcast
-      const comment = Array.from((storage as any).comments.values()).find((c: any) => c.id === commentId);
+      const comments = Array.from((storage as any).comments.values());
+      const comment = comments.find((c: any) => c.id === commentId) as any;
       broadcast({ type: 'COMMENT_LIKED', commentId, likeCount: comment?.likeCount || 0 });
       
       res.json({ isLiked });

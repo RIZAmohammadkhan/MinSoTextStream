@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import CommentSection from "./comment-section";
+import CommentSection from "@/components/comment-section";
 import type { PostWithAuthor } from "@shared/schema";
 
 interface PostCardProps {
@@ -48,22 +48,22 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user }, ref) =>
   return (
     <article 
       ref={ref}
-      className="border border-subtle-border rounded-lg p-6 hover:border-subtle-border/60 transition-colors duration-200"
+      className="border border-subtle-border rounded-lg p-8 hover:border-subtle-border/60 transition-colors duration-200 mb-8"
       data-testid={`post-${post.id}`}
     >
-      <div className="flex items-start space-x-3">
+      <div className="flex items-start space-x-4">
         <div className="flex-1">
           {/* User Info */}
-          <div className="flex items-center space-x-2 mb-3">
+          <div className="flex items-center space-x-3 mb-4">
             <span 
-              className={`font-medium ${post.author.isAI ? 'text-ai-purple' : 'text-human-green'}`}
+              className={`font-semibold text-lg ${post.author.isAI ? 'text-ai-purple' : 'text-human-green'}`}
               data-testid={`text-username-${post.id}`}
             >
               @{post.author.username}
             </span>
-            <span className={`text-xs ${post.author.isAI ? 'text-ai-purple' : 'text-human-green'}`}>●</span>
+            <span className={`text-sm ${post.author.isAI ? 'text-ai-purple' : 'text-human-green'}`}>●</span>
             <span 
-              className="text-xs text-gray-500"
+              className="text-sm text-beige-text/60"
               data-testid={`text-timestamp-${post.id}`}
             >
               {formatTimeAgo(post.createdAt)}
@@ -73,7 +73,7 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user }, ref) =>
           {/* Bio */}
           {post.author.bio && (
             <div 
-              className="text-xs text-gray-400 mb-4 leading-relaxed"
+              className="text-sm text-beige-text/70 mb-6 leading-relaxed"
               data-testid={`text-bio-${post.id}`}
             >
               {post.author.isAI ? 'AI' : 'Human'} • {post.author.bio}
@@ -82,24 +82,24 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user }, ref) =>
           
           {/* Post Content */}
           <div 
-            className="text-base leading-relaxed mb-6 whitespace-pre-wrap"
+            className="text-lg leading-relaxed mb-8 whitespace-pre-wrap text-beige-text"
             data-testid={`text-content-${post.id}`}
           >
             {post.content}
           </div>
           
           {/* Post Actions */}
-          <div className="flex items-center space-x-6">
+          <div className="flex items-center space-x-8">
             <Button
               variant="ghost"
               size="sm"
               onClick={() => likePostMutation.mutate()}
               disabled={likePostMutation.isPending}
-              className="flex items-center space-x-2 text-gray-500 hover:text-beige-text transition-colors duration-200 p-0 h-auto"
+              className="flex items-center space-x-2 text-beige-text/60 hover:text-beige-text transition-colors duration-200 p-0 h-auto"
               data-testid={`button-like-${post.id}`}
             >
               <Heart 
-                size={16} 
+                size={18} 
                 className={post.isLiked ? "fill-accent-beige text-accent-beige" : ""}
               />
               <span className="text-sm">{post.likeCount}</span>
@@ -109,10 +109,10 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user }, ref) =>
               variant="ghost"
               size="sm"
               onClick={() => setShowComments(!showComments)}
-              className="flex items-center space-x-2 text-gray-500 hover:text-beige-text transition-colors duration-200 p-0 h-auto"
+              className="flex items-center space-x-2 text-beige-text/60 hover:text-beige-text transition-colors duration-200 p-0 h-auto"
               data-testid={`button-comments-${post.id}`}
             >
-              <MessageCircle size={16} />
+              <MessageCircle size={18} />
               <span className="text-sm">{post.commentCount}</span>
             </Button>
           </div>
