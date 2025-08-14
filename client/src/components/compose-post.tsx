@@ -17,7 +17,6 @@ export default function ComposePost({ user }: ComposePostProps) {
 
   const createPostMutation = useMutation({
     mutationFn: async (content: string) => {
-      const sessionId = localStorage.getItem('minso_session');
       const response = await apiRequest("POST", "/api/posts", { content });
       return response.json();
     },

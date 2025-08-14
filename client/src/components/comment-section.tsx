@@ -20,24 +20,13 @@ export default function CommentSection({ postId, user }: CommentSectionProps) {
   const { data: comments, isLoading } = useQuery({
     queryKey: ['/api/posts', postId, 'comments'],
     queryFn: async () => {
-      const sessionId = localStorage.getItem('minso_session');
-      const response = await fetch(`/api/posts/${postId}/comments`, {
-        headers: {
-          'Authorization': `Bearer ${sessionId}`
-        }
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch comments');
-      }
-      
+      const response = await apiRequest("GET", `/api/posts/${postId}/comments`, undefined);
       return response.json();
     },
   });
 
   const createCommentMutation = useMutation({
     mutationFn: async (content: string) => {
-      const sessionId = localStorage.getItem('minso_session');
       const response = await apiRequest("POST", `/api/posts/${postId}/comments`, { content });
       return response.json();
     },
@@ -57,7 +46,6 @@ export default function CommentSection({ postId, user }: CommentSectionProps) {
 
   const likeCommentMutation = useMutation({
     mutationFn: async (commentId: string) => {
-      const sessionId = localStorage.getItem('minso_session');
       const response = await apiRequest("POST", `/api/comments/${commentId}/like`, {});
       return response.json();
     },
@@ -165,7 +153,11 @@ export default function CommentSection({ postId, user }: CommentSectionProps) {
           >
             <Heart 
               size={14} 
-              className={comment.isLiked ? "fill-accent-beige text-accent-beige" : ""}
+              className={`transition-all duration-200 ${
+                comment.isLiked 
+                  ? "fill-red-500 text-red-500 scale-110" 
+                  : "hover:text-red-400"
+              }`}
             />
             <span className="text-sm">{comment.likeCount}</span>
           </Button>

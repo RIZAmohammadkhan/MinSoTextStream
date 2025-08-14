@@ -15,6 +15,7 @@ interface AuthProps {
 export default function Auth({ onLogin }: AuthProps) {
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState<{[key: string]: string}>({});
   const [formData, setFormData] = useState({
     username: "",
     password: "",
@@ -26,9 +27,16 @@ export default function Auth({ onLogin }: AuthProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setErrors({}); // Clear previous errors
 
     try {
       const endpoint = isLogin ? "/api/auth/login" : "/api/auth/register";
+      console.log('Attempting auth request to:', endpoint, 'with data:', {
+        username: formData.username,
+        bio: formData.bio,
+        isAI: formData.isAI
+      });
+      
       const response = await apiRequest("POST", endpoint, formData);
       const data = await response.json();
 
@@ -42,11 +50,60 @@ export default function Auth({ onLogin }: AuthProps) {
         description: isLogin ? "You've been logged in successfully." : "Your MinSO account has been created.",
       });
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "An error occurred",
-        variant: "destructive",
-      });
+      console.error('Auth error:', error);
+      
+      try {
+        // Try to parse error response
+        const errorData = JSON.parse(error.message.split(': ')[1] || '{}');
+        
+        if (errorData.field) {
+          // Field-specific error
+          setErrors({ [errorData.field]: errorData.details || errorData.message });
+          toast({
+            title: "Validation Error",
+            description: errorData.details || errorData.message,
+            variant: "destructive",
+          });
+        } else {
+          // General error
+          let errorMessage = errorData.details || errorData.message || "An error occurred";
+          
+          // Handle specific error types
+          if (error.message.includes('401')) {
+            errorMessage = isLogin 
+              ? "Invalid username or password. Please check your credentials and try again."
+              : "Account creation failed. Please try again.";
+          } else if (error.message.includes('409')) {
+            errorMessage = "This username is already taken. Please choose a different one.";
+            setErrors({ username: errorMessage });
+          } else if (error.message.includes('400')) {
+            errorMessage = "Please check your input and try again.";
+          } else if (error.message.includes('404') || error.message.includes('fetch')) {
+            errorMessage = "Cannot connect to server. Please check your connection and try again.";
+          }
+          
+          toast({
+            title: isLogin ? "Login Failed" : "Registration Failed",
+            description: errorMessage,
+            variant: "destructive",
+          });
+        }
+      } catch (parseError) {
+        // Fallback for unparseable errors
+        let errorMessage = "An unexpected error occurred";
+        
+        if (error.message.includes('fetch')) {
+          errorMessage = "Cannot connect to server. Please check your connection and try again.";
+        } else if (error.message.includes('401')) {
+          errorMessage = "Invalid credentials. Please check your username and password.";
+        }
+        
+        toast({
+          title: "Error",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -70,11 +127,19 @@ export default function Auth({ onLogin }: AuthProps) {
                 type="text"
                 placeholder="@your_username"
                 value={formData.username}
-                onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value }))}
+                onChange={(e) => {
+                  setFormData(prev => ({ ...prev, username: e.target.value }));
+                  if (errors.username) setErrors(prev => ({ ...prev, username: '' }));
+                }}
                 required
-                className="bg-dark-bg border-subtle-border text-beige-text placeholder-beige-text/50 text-base p-3"
+                className={`bg-dark-bg border-subtle-border text-beige-text placeholder-beige-text/50 text-base p-3 ${
+                  errors.username ? 'border-red-500 focus:border-red-500' : ''
+                }`}
                 data-testid="input-username"
               />
+              {errors.username && (
+                <p className="text-red-400 text-sm mt-1">{errors.username}</p>
+              )}
             </div>
             
             <div>
@@ -84,11 +149,19 @@ export default function Auth({ onLogin }: AuthProps) {
                 type="password"
                 placeholder="Enter your password"
                 value={formData.password}
-                onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+                onChange={(e) => {
+                  setFormData(prev => ({ ...prev, password: e.target.value }));
+                  if (errors.password) setErrors(prev => ({ ...prev, password: '' }));
+                }}
                 required
-                className="bg-dark-bg border-subtle-border text-beige-text placeholder-beige-text/50 text-base p-3"
+                className={`bg-dark-bg border-subtle-border text-beige-text placeholder-beige-text/50 text-base p-3 ${
+                  errors.password ? 'border-red-500 focus:border-red-500' : ''
+                }`}
                 data-testid="input-password"
               />
+              {errors.password && (
+                <p className="text-red-400 text-sm mt-1">{errors.password}</p>
+              )}
             </div>
 
             {!isLogin && (
@@ -99,18 +172,26 @@ export default function Auth({ onLogin }: AuthProps) {
                     id="bio"
                     placeholder="Tell us about yourself..."
                     value={formData.bio}
-                    onChange={(e) => setFormData(prev => ({ ...prev, bio: e.target.value }))}
-                    className="bg-dark-bg border-subtle-border text-beige-text placeholder-beige-text/50 resize-none text-base p-3"
+                    onChange={(e) => {
+                      setFormData(prev => ({ ...prev, bio: e.target.value }));
+                      if (errors.bio) setErrors(prev => ({ ...prev, bio: '' }));
+                    }}
+                    className={`bg-dark-bg border-subtle-border text-beige-text placeholder-beige-text/50 resize-none text-base p-3 ${
+                      errors.bio ? 'border-red-500 focus:border-red-500' : ''
+                    }`}
                     rows={3}
                     data-testid="input-bio"
                   />
+                  {errors.bio && (
+                    <p className="text-red-400 text-sm mt-1">{errors.bio}</p>
+                  )}
                 </div>
 
                 <div className="flex items-center space-x-3">
                   <Switch
                     id="is-ai"
                     checked={formData.isAI}
-                    onCheckedChange={(checked) => setFormData(prev => ({ ...prev, isAI: checked }))}
+                    onCheckedChange={(checked: boolean) => setFormData(prev => ({ ...prev, isAI: checked }))}
                     data-testid="switch-is-ai"
                   />
                   <Label htmlFor="is-ai" className="text-beige-text text-base">
@@ -133,7 +214,11 @@ export default function Auth({ onLogin }: AuthProps) {
           <div className="mt-6 text-center">
             <button
               type="button"
-              onClick={() => setIsLogin(!isLogin)}
+              onClick={() => {
+                setIsLogin(!isLogin);
+                setErrors({}); // Clear errors when switching modes
+                setFormData({ username: "", password: "", bio: "", isAI: false }); // Reset form
+              }}
               className="text-beige-text/70 hover:text-beige-text text-base transition-colors"
               data-testid="button-toggle-mode"
             >

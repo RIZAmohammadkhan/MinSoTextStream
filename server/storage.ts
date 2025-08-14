@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type Post, type InsertPost, type Comment, type InsertComment, type Like, type Follow, type PostWithAuthor, type CommentWithAuthor, type UserWithFollowInfo } from "@shared/schema";
+import { type User, type InsertUser, type Post, type InsertPost, type Comment, type InsertComment, type Like, type Follow, type PostWithAuthor, type CommentWithAuthor, type UserWithFollowInfo, type Notification, type Bookmark, type PostStats } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -6,17 +6,22 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  updateUser(id: string, updates: Partial<User>): Promise<User | undefined>;
+  deleteUser(id: string): Promise<boolean>;
   
   // Post methods
   getPosts(offset: number, limit: number): Promise<PostWithAuthor[]>;
   getFollowingPosts(userId: string, offset: number, limit: number): Promise<PostWithAuthor[]>;
+  getUserPosts(userId: string, offset: number, limit: number): Promise<PostWithAuthor[]>;
   getPost(id: string): Promise<PostWithAuthor | undefined>;
   createPost(post: InsertPost, authorId: string): Promise<Post>;
+  updatePost(postId: string, userId: string, content: string): Promise<boolean>;
   deletePost(postId: string, userId: string): Promise<boolean>;
   
   // Comment methods
   getCommentsByPostId(postId: string): Promise<CommentWithAuthor[]>;
   createComment(comment: InsertComment, authorId: string): Promise<Comment>;
+  deleteComment(commentId: string, userId: string): Promise<boolean>;
   
   // Like methods
   togglePostLike(userId: string, postId: string): Promise<boolean>;
@@ -29,6 +34,21 @@ export interface IStorage {
   getFollowers(userId: string): Promise<User[]>;
   getFollowing(userId: string): Promise<User[]>;
   getFollowingIds(userId: string): Promise<string[]>;
+  
+  // Bookmark methods
+  toggleBookmark(userId: string, postId: string): Promise<boolean>;
+  getUserBookmarks(userId: string, offset: number, limit: number): Promise<PostWithAuthor[]>;
+  
+  // Notification methods
+  createNotification(userId: string, type: string, message: string, relatedPostId?: string, relatedUserId?: string): Promise<Notification>;
+  getUserNotifications(userId: string, offset: number, limit: number): Promise<Notification[]>;
+  markNotificationAsRead(notificationId: string, userId: string): Promise<boolean>;
+  markAllNotificationsAsRead(userId: string): Promise<boolean>;
+  getUnreadNotificationCount(userId: string): Promise<number>;
+  
+  // Analytics methods
+  getUserStats(userId: string): Promise<PostStats>;
+  getTrendingPosts(limit: number): Promise<PostWithAuthor[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -37,6 +57,8 @@ export class MemStorage implements IStorage {
   private comments: Map<string, Comment>;
   private likes: Map<string, Like>;
   private follows: Map<string, Follow>;
+  private notifications: Map<string, Notification>;
+  private bookmarks: Map<string, Bookmark>;
 
   constructor() {
     this.users = new Map();
@@ -44,6 +66,8 @@ export class MemStorage implements IStorage {
     this.comments = new Map();
     this.likes = new Map();
     this.follows = new Map();
+    this.notifications = new Map();
+    this.bookmarks = new Map();
     
     // Add some seed data for testing
     this.seedData();
@@ -441,6 +465,221 @@ export class MemStorage implements IStorage {
     return Array.from(this.follows.values())
       .filter(follow => follow.followerId === userId)
       .map(follow => follow.followingId);
+  }
+
+  // New methods to implement interface
+  async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
+    const user = this.users.get(id);
+    if (!user) return undefined;
+    
+    const updatedUser = { ...user, ...updates };
+    this.users.set(id, updatedUser);
+    return updatedUser;
+  }
+
+  async deleteUser(id: string): Promise<boolean> {
+    const user = this.users.get(id);
+    if (!user) return false;
+    
+    // Delete user's posts
+    const userPosts = Array.from(this.posts.values()).filter(post => post.authorId === id);
+    userPosts.forEach(post => this.posts.delete(post.id));
+    
+    // Delete user's comments
+    const userComments = Array.from(this.comments.values()).filter(comment => comment.authorId === id);
+    userComments.forEach(comment => this.comments.delete(comment.id));
+    
+    // Delete user's likes
+    const userLikes = Array.from(this.likes.values()).filter(like => like.userId === id);
+    userLikes.forEach(like => this.likes.delete(like.id));
+    
+    // Delete user's follows
+    const userFollows = Array.from(this.follows.values()).filter(follow => 
+      follow.followerId === id || follow.followingId === id);
+    userFollows.forEach(follow => this.follows.delete(follow.id));
+    
+    // Delete user's bookmarks
+    const userBookmarks = Array.from(this.bookmarks.values()).filter(bookmark => bookmark.userId === id);
+    userBookmarks.forEach(bookmark => this.bookmarks.delete(bookmark.id));
+    
+    // Delete user's notifications
+    const userNotifications = Array.from(this.notifications.values()).filter(notification => notification.userId === id);
+    userNotifications.forEach(notification => this.notifications.delete(notification.id));
+    
+    this.users.delete(id);
+    return true;
+  }
+
+  async getUserPosts(userId: string, offset: number, limit: number): Promise<PostWithAuthor[]> {
+    const userPosts = Array.from(this.posts.values())
+      .filter(post => post.authorId === userId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(offset, offset + limit);
+
+    return userPosts.map(post => {
+      const author = this.users.get(post.authorId);
+      return {
+        ...post,
+        author: author!,
+        isLiked: false, // Will be updated based on current user
+        isBookmarked: false
+      };
+    });
+  }
+
+  async updatePost(postId: string, userId: string, content: string): Promise<boolean> {
+    const post = this.posts.get(postId);
+    if (!post || post.authorId !== userId) return false;
+    
+    post.content = content;
+    this.posts.set(postId, post);
+    return true;
+  }
+
+  async deleteComment(commentId: string, userId: string): Promise<boolean> {
+    const comment = this.comments.get(commentId);
+    if (!comment || comment.authorId !== userId) return false;
+    
+    this.comments.delete(commentId);
+    
+    // Update comment count for the post
+    const post = this.posts.get(comment.postId);
+    if (post) {
+      post.commentCount = Math.max(0, post.commentCount - 1);
+      this.posts.set(post.id, post);
+    }
+    
+    return true;
+  }
+
+  async toggleBookmark(userId: string, postId: string): Promise<boolean> {
+    const existingBookmark = Array.from(this.bookmarks.values()).find(
+      bookmark => bookmark.userId === userId && bookmark.postId === postId
+    );
+
+    if (existingBookmark) {
+      this.bookmarks.delete(existingBookmark.id);
+      return false;
+    } else {
+      const bookmarkId = randomUUID();
+      const bookmark: Bookmark = {
+        id: bookmarkId,
+        userId,
+        postId,
+        createdAt: new Date()
+      };
+      this.bookmarks.set(bookmarkId, bookmark);
+      return true;
+    }
+  }
+
+  async getUserBookmarks(userId: string, offset: number, limit: number): Promise<PostWithAuthor[]> {
+    const userBookmarks = Array.from(this.bookmarks.values())
+      .filter(bookmark => bookmark.userId === userId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(offset, offset + limit);
+
+    const bookmarkedPosts = userBookmarks.map(bookmark => this.posts.get(bookmark.postId))
+      .filter(post => post !== undefined) as Post[];
+
+    return bookmarkedPosts.map(post => {
+      const author = this.users.get(post.authorId);
+      return {
+        ...post,
+        author: author!,
+        isLiked: false, // Will be updated based on current user
+        isBookmarked: true
+      };
+    });
+  }
+
+  async createNotification(userId: string, type: string, message: string, relatedPostId?: string, relatedUserId?: string): Promise<Notification> {
+    const id = randomUUID();
+    const notification: Notification = {
+      id,
+      userId,
+      type,
+      message,
+      relatedPostId: relatedPostId || null,
+      relatedUserId: relatedUserId || null,
+      read: false,
+      createdAt: new Date()
+    };
+    this.notifications.set(id, notification);
+    return notification;
+  }
+
+  async getUserNotifications(userId: string, offset: number, limit: number): Promise<Notification[]> {
+    return Array.from(this.notifications.values())
+      .filter(notification => notification.userId === userId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(offset, offset + limit);
+  }
+
+  async markNotificationAsRead(notificationId: string, userId: string): Promise<boolean> {
+    const notification = this.notifications.get(notificationId);
+    if (!notification || notification.userId !== userId) return false;
+    
+    notification.read = true;
+    this.notifications.set(notificationId, notification);
+    return true;
+  }
+
+  async markAllNotificationsAsRead(userId: string): Promise<boolean> {
+    const userNotifications = Array.from(this.notifications.values())
+      .filter(notification => notification.userId === userId && !notification.read);
+    
+    userNotifications.forEach(notification => {
+      notification.read = true;
+      this.notifications.set(notification.id, notification);
+    });
+    
+    return true;
+  }
+
+  async getUnreadNotificationCount(userId: string): Promise<number> {
+    return Array.from(this.notifications.values())
+      .filter(notification => notification.userId === userId && !notification.read)
+      .length;
+  }
+
+  async getUserStats(userId: string): Promise<PostStats> {
+    const userPosts = Array.from(this.posts.values()).filter(post => post.authorId === userId);
+    const totalPosts = userPosts.length;
+    const totalLikes = userPosts.reduce((sum, post) => sum + post.likeCount, 0);
+    const totalComments = userPosts.reduce((sum, post) => sum + post.commentCount, 0);
+    const engagement = totalPosts > 0 ? (totalLikes + totalComments) / totalPosts : 0;
+
+    return {
+      totalPosts,
+      totalLikes,
+      totalComments,
+      engagement: Math.round(engagement * 100) / 100
+    };
+  }
+
+  async getTrendingPosts(limit: number): Promise<PostWithAuthor[]> {
+    const posts = Array.from(this.posts.values())
+      .sort((a, b) => {
+        // Sort by engagement score (likes + comments) and recency
+        const scoreA = a.likeCount + a.commentCount;
+        const scoreB = b.likeCount + b.commentCount;
+        if (scoreA === scoreB) {
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        }
+        return scoreB - scoreA;
+      })
+      .slice(0, limit);
+
+    return posts.map(post => {
+      const author = this.users.get(post.authorId);
+      return {
+        ...post,
+        author: author!,
+        isLiked: false,
+        isBookmarked: false
+      };
+    });
   }
 }
 

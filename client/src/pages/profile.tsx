@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Calendar, Users, UserPlus } from "lucide-react";
+import { Calendar, Users, UserPlus, Settings } from "lucide-react";
 import Layout from "../components/layout";
 import PostCard from "../components/post-card";
 import { Button } from "@/components/ui/button";
@@ -11,19 +11,48 @@ import type { PostWithAuthor, User } from "@shared/schema";
 interface ProfilePageProps {
   user: any;
   onLogout: () => void;
+  userId?: string;
 }
 
-export default function ProfilePage({ user, onLogout }: ProfilePageProps) {
+export default function ProfilePage({ user, onLogout, userId }: ProfilePageProps) {
   const [activeTab, setActiveTab] = useState<'posts' | 'followers' | 'following'>('posts');
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  
+  // Determine which user profile to show
+  const profileUserId = userId || user.id;
+  const isOwnProfile = profileUserId === user.id;
+
+  // Get profile user data
+  const { data: profileUser, isLoading: profileLoading } = useQuery({
+    queryKey: ['/api/users', profileUserId],
+    queryFn: async () => {
+      if (isOwnProfile) {
+        return user; // Use current user data for own profile
+      }
+      
+      const sessionId = localStorage.getItem('minso_session');
+      const response = await fetch(`/api/users/${profileUserId}`, {
+        headers: {
+          'Authorization': `Bearer ${sessionId}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch user profile');
+      }
+      
+      return response.json();
+    },
+    enabled: !!profileUserId,
+  });
 
   // Get user's posts
   const { data: userPosts, isLoading: postsLoading } = useQuery({
-    queryKey: ['/api/posts', 'user', user.id],
+    queryKey: ['/api/users', profileUserId, 'posts'],
     queryFn: async () => {
       const sessionId = localStorage.getItem('minso_session');
-      const response = await fetch('/api/posts', {
+      const response = await fetch(`/api/users/${profileUserId}/posts?limit=50`, {
         headers: {
           'Authorization': `Bearer ${sessionId}`
         }
@@ -33,17 +62,17 @@ export default function ProfilePage({ user, onLogout }: ProfilePageProps) {
         throw new Error('Failed to fetch posts');
       }
       
-      const allPosts = await response.json();
-      return allPosts.filter((post: PostWithAuthor) => post.author.id === user.id);
+      return response.json();
     },
+    enabled: !!profileUserId,
   });
 
   // Get followers
   const { data: followers } = useQuery({
-    queryKey: ['/api/users', user.id, 'followers'],
+    queryKey: ['/api/users', profileUserId, 'followers'],
     queryFn: async () => {
       const sessionId = localStorage.getItem('minso_session');
-      const response = await fetch(`/api/users/${user.id}/followers`, {
+      const response = await fetch(`/api/users/${profileUserId}/followers`, {
         headers: {
           'Authorization': `Bearer ${sessionId}`
         }
@@ -55,14 +84,15 @@ export default function ProfilePage({ user, onLogout }: ProfilePageProps) {
       
       return response.json();
     },
+    enabled: !!profileUserId,
   });
 
   // Get following
   const { data: following } = useQuery({
-    queryKey: ['/api/users', user.id, 'following'],
+    queryKey: ['/api/users', profileUserId, 'following'],
     queryFn: async () => {
       const sessionId = localStorage.getItem('minso_session');
-      const response = await fetch(`/api/users/${user.id}/following`, {
+      const response = await fetch(`/api/users/${profileUserId}/following`, {
         headers: {
           'Authorization': `Bearer ${sessionId}`
         }
@@ -73,6 +103,42 @@ export default function ProfilePage({ user, onLogout }: ProfilePageProps) {
       }
       
       return response.json();
+    },
+    enabled: !!profileUserId,
+  });
+
+  // Follow/unfollow mutation
+  const followMutation = useMutation({
+    mutationFn: async () => {
+      const sessionId = localStorage.getItem('minso_session');
+      const response = await fetch(`/api/users/${profileUserId}/follow`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${sessionId}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to toggle follow');
+      }
+      
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/users', profileUserId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/users', profileUserId, 'followers'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/users', user.id, 'following'] });
+      toast({
+        title: "Success",
+        description: profileUser?.isFollowing ? "Unfollowed user" : "Now following user",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to toggle follow",
+        variant: "destructive",
+      });
     },
   });
 
@@ -208,6 +274,42 @@ export default function ProfilePage({ user, onLogout }: ProfilePageProps) {
     }
   };
 
+  if (profileLoading) {
+    return (
+      <Layout user={user} onLogout={onLogout}>
+        <main className="max-w-3xl mx-auto px-6 py-12">
+          <div className="animate-pulse">
+            <div className="flex items-start justify-between mb-8">
+              <div className="flex-1">
+                <div className="h-10 w-64 bg-subtle-border rounded mb-4"></div>
+                <div className="h-6 w-96 bg-subtle-border rounded mb-6"></div>
+                <div className="h-4 w-48 bg-subtle-border rounded mb-6"></div>
+                <div className="flex space-x-8">
+                  <div className="h-8 w-16 bg-subtle-border rounded"></div>
+                  <div className="h-8 w-16 bg-subtle-border rounded"></div>
+                  <div className="h-8 w-16 bg-subtle-border rounded"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </Layout>
+    );
+  }
+
+  if (!profileUser) {
+    return (
+      <Layout user={user} onLogout={onLogout}>
+        <main className="max-w-3xl mx-auto px-6 py-12">
+          <div className="text-center py-20">
+            <div className="text-red-400 text-2xl mb-4">User not found</div>
+            <div className="text-beige-text/50 text-lg">The user you're looking for doesn't exist</div>
+          </div>
+        </main>
+      </Layout>
+    );
+  }
+
   return (
     <Layout user={user} onLogout={onLogout}>
       <main className="max-w-3xl mx-auto px-6 py-12">
@@ -218,26 +320,26 @@ export default function ProfilePage({ user, onLogout }: ProfilePageProps) {
               {/* Username and Type */}
               <div className="flex items-center space-x-4 mb-4">
                 <h1 
-                  className={`text-4xl font-bold ${user.isAI ? 'text-ai-purple' : 'text-human-green'}`}
+                  className={`text-4xl font-bold ${profileUser.isAI ? 'text-ai-purple' : 'text-human-green'}`}
                   data-testid="text-profile-username"
                 >
-                  @{user.username}
+                  @{profileUser.username}
                 </h1>
                 <span 
-                  className={`text-lg px-4 py-2 rounded-full ${user.isAI ? 'bg-ai-purple/20 text-ai-purple' : 'bg-human-green/20 text-human-green'}`}
+                  className={`text-lg px-4 py-2 rounded-full ${profileUser.isAI ? 'bg-ai-purple/20 text-ai-purple' : 'bg-human-green/20 text-human-green'}`}
                   data-testid="text-profile-type"
                 >
-                  {user.isAI ? 'AI' : 'Human'}
+                  {profileUser.isAI ? 'AI' : 'Human'}
                 </span>
               </div>
               
               {/* Bio */}
-              {user.bio && (
+              {profileUser.bio && (
                 <div 
                   className="text-xl text-beige-text/80 mb-6 leading-relaxed"
                   data-testid="text-profile-bio"
                 >
-                  {user.bio}
+                  {profileUser.bio}
                 </div>
               )}
               
@@ -245,7 +347,7 @@ export default function ProfilePage({ user, onLogout }: ProfilePageProps) {
               <div className="flex items-center space-x-2 text-beige-text/60 mb-6">
                 <Calendar size={16} />
                 <span data-testid="text-member-since">
-                  Member since {formatMemberSince(user.createdAt)}
+                  Member since {formatMemberSince(profileUser.createdAt)}
                 </span>
               </div>
               
@@ -259,17 +361,52 @@ export default function ProfilePage({ user, onLogout }: ProfilePageProps) {
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-beige-text" data-testid="text-followers-count">
-                    {followers?.length || 0}
+                    {profileUser.followerCount || followers?.length || 0}
                   </div>
                   <div className="text-sm text-beige-text/60">Followers</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-beige-text" data-testid="text-following-count">
-                    {following?.length || 0}
+                    {profileUser.followingCount || following?.length || 0}
                   </div>
                   <div className="text-sm text-beige-text/60">Following</div>
                 </div>
               </div>
+            </div>
+            
+            {/* Action Buttons */}
+            <div className="flex items-center space-x-4">
+              {!isOwnProfile && (
+                <Button
+                  onClick={() => followMutation.mutate()}
+                  disabled={followMutation.isPending}
+                  className={
+                    profileUser.isFollowing
+                      ? "bg-subtle-border text-beige-text hover:bg-red-600 hover:text-white"
+                      : "bg-accent-beige text-dark-bg hover:bg-accent-beige/90"
+                  }
+                  data-testid="button-follow"
+                >
+                  <UserPlus size={16} className="mr-2" />
+                  {followMutation.isPending 
+                    ? 'Loading...' 
+                    : profileUser.isFollowing 
+                    ? 'Unfollow' 
+                    : 'Follow'
+                  }
+                </Button>
+              )}
+              
+              {isOwnProfile && (
+                <Button
+                  variant="outline"
+                  className="border-subtle-border text-beige-text hover:bg-subtle-border/20"
+                  data-testid="button-settings"
+                >
+                  <Settings size={16} className="mr-2" />
+                  Settings
+                </Button>
+              )}
             </div>
           </div>
           

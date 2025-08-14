@@ -5,8 +5,31 @@ import { storage } from "./storage";
 import { insertUserSchema, insertPostSchema, insertCommentSchema } from "@shared/schema";
 import { z } from "zod";
 
-// Simple session store for demo purposes
-const sessions = new Map<string, { userId: string; username: string }>();
+// Simple session store for demo purposes - in production, use Redis or database
+const sessions = new Map<string, { userId: string; username: string; expiresAt: Date }>();
+
+// Clean up expired sessions periodically
+setInterval(() => {
+  const now = new Date();
+  Array.from(sessions.entries()).forEach(([sessionId, session]) => {
+    if (session.expiresAt < now) {
+      sessions.delete(sessionId);
+    }
+  });
+}, 60000); // Clean up every minute
+
+// Helper function to hash passwords (simple for demo - use bcrypt in production)
+function hashPassword(password: string): string {
+  // For demo purposes, just return the password
+  // In production, use: return bcrypt.hashSync(password, 10);
+  return password;
+}
+
+function verifyPassword(password: string, hash: string): boolean {
+  // For demo purposes, just compare directly
+  // In production, use: return bcrypt.compareSync(password, hash);
+  return password === hash;
+}
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
@@ -53,40 +76,99 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if username already exists
       const existingUser = await storage.getUserByUsername(userData.username);
       if (existingUser) {
-        return res.status(400).json({ message: "Username already exists" });
+        return res.status(409).json({ 
+          message: "Username already exists", 
+          field: "username",
+          details: "This username is already taken. Please choose a different one."
+        });
       }
       
-      const user = await storage.createUser(userData);
+      // Hash password before storing
+      const hashedUserData = {
+        ...userData,
+        password: hashPassword(userData.password)
+      };
+      
+      const user = await storage.createUser(hashedUserData);
       const sessionId = crypto.randomUUID();
-      sessions.set(sessionId, { userId: user.id, username: user.username });
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+      sessions.set(sessionId, { userId: user.id, username: user.username, expiresAt });
       
       res.json({ 
         user: { id: user.id, username: user.username, bio: user.bio, isAI: user.isAI },
         sessionId 
       });
-    } catch (error) {
-      res.status(400).json({ message: "Invalid input" });
+    } catch (error: any) {
+      console.error('Registration error:', error);
+      
+      // Handle validation errors
+      if (error.name === 'ZodError') {
+        const firstError = error.errors[0];
+        return res.status(400).json({ 
+          message: firstError.message,
+          field: firstError.path[0],
+          details: firstError.message
+        });
+      }
+      
+      res.status(500).json({ 
+        message: "Registration failed", 
+        details: "An internal error occurred. Please try again later."
+      });
     }
   });
 
   app.post("/api/auth/login", async (req, res) => {
     try {
+      console.log('Login attempt:', { username: req.body.username, hasPassword: !!req.body.password });
       const { username, password } = req.body;
+      
+      // Validate input
+      if (!username || !password) {
+        return res.status(400).json({ 
+          message: "Missing credentials", 
+          details: "Both username and password are required."
+        });
+      }
+      
       const user = await storage.getUserByUsername(username);
       
-      if (!user || user.password !== password) {
-        return res.status(401).json({ message: "Invalid credentials" });
+      console.log('User found:', !!user);
+      if (!user) {
+        console.log('User not found for username:', username);
+        return res.status(401).json({ 
+          message: "Invalid credentials", 
+          field: "username",
+          details: "No account found with this username. Please check your username or create a new account."
+        });
+      }
+      
+      const passwordValid = verifyPassword(password, user.password);
+      console.log('Password valid:', passwordValid);
+      
+      if (!passwordValid) {
+        return res.status(401).json({ 
+          message: "Invalid credentials", 
+          field: "password",
+          details: "Incorrect password. Please check your password and try again."
+        });
       }
       
       const sessionId = crypto.randomUUID();
-      sessions.set(sessionId, { userId: user.id, username: user.username });
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+      sessions.set(sessionId, { userId: user.id, username: user.username, expiresAt });
       
+      console.log('Login successful for:', username);
       res.json({ 
         user: { id: user.id, username: user.username, bio: user.bio, isAI: user.isAI },
         sessionId 
       });
     } catch (error) {
-      res.status(400).json({ message: "Invalid input" });
+      console.error('Login error:', error);
+      res.status(500).json({ 
+        message: "Login failed", 
+        details: "An internal error occurred. Please try again later."
+      });
     }
   });
 
@@ -115,17 +197,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
         posts = await storage.getPosts(offset, limit);
       }
       
-      // Get user likes if authenticated
+      // Get user likes and bookmarks if authenticated
       if (session) {
         const userLikes = await storage.getUserLikes(session.userId);
+        const userBookmarks = await storage.getUserBookmarks(session.userId, 0, 1000);
+        const bookmarkedPostIds = userBookmarks.map(post => post.id);
+        
         posts.forEach(post => {
           post.isLiked = userLikes.some(like => like.postId === post.id);
+          post.isBookmarked = bookmarkedPostIds.includes(post.id);
         });
       }
       
       res.json(posts);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch posts" });
+    }
+  });
+
+  // Get individual post by ID (for sharing)
+  app.get("/api/posts/:postId", async (req, res) => {
+    try {
+      const { postId } = req.params;
+      const post = await storage.getPost(postId);
+      
+      if (!post) {
+        return res.status(404).json({ message: "Post not found" });
+      }
+      
+      // Get user likes and bookmarks if authenticated
+      const sessionId = req.headers.authorization?.replace('Bearer ', '');
+      const session = sessionId ? sessions.get(sessionId) : null;
+      
+      if (session) {
+        const userLikes = await storage.getUserLikes(session.userId);
+        const userBookmarks = await storage.getUserBookmarks(session.userId, 0, 1000);
+        const bookmarkedPostIds = userBookmarks.map(p => p.id);
+        
+        post.isLiked = userLikes.some(like => like.postId === post.id);
+        post.isBookmarked = bookmarkedPostIds.includes(post.id);
+      }
+      
+      res.json(post);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch post" });
     }
   });
 
@@ -169,6 +284,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { postId } = req.params;
       const isLiked = await storage.togglePostLike(req.user.userId, postId);
       
+      // Create notification for post author if liked
+      if (isLiked) {
+        const post = await storage.getPost(postId);
+        if (post && post.author.id !== req.user.userId) {
+          await storage.createNotification(
+            post.author.id,
+            'like',
+            `${req.user.username} liked your post`,
+            postId,
+            req.user.userId
+          );
+        }
+      }
+      
       // Broadcast like update
       const post = await storage.getPost(postId);
       broadcast({ type: 'POST_LIKED', postId, likeCount: post?.likeCount || 0 });
@@ -207,6 +336,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { postId } = req.params;
       const commentData = insertCommentSchema.parse({ ...req.body, postId });
       const comment = await storage.createComment(commentData, req.user.userId);
+      
+      // Create notification for post author
+      const post = await storage.getPost(postId);
+      if (post && post.author.id !== req.user.userId) {
+        await storage.createNotification(
+          post.author.id,
+          'comment',
+          `${req.user.username} commented on your post`,
+          postId,
+          req.user.userId
+        );
+      }
       
       // Get comment with author
       const comments = await storage.getCommentsByPostId(postId);
@@ -259,6 +400,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { userId } = req.params;
       const isFollowing = await storage.toggleFollow(req.user.userId, userId);
       
+      // Create notification for followed user
+      if (isFollowing) {
+        await storage.createNotification(
+          userId,
+          'follow',
+          `${req.user.username} started following you`,
+          undefined,
+          req.user.userId
+        );
+      }
+      
       broadcast({ type: 'USER_FOLLOWED', followerId: req.user.userId, followingId: userId, isFollowing });
       
       res.json({ isFollowing });
@@ -288,6 +440,271 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(following);
     } catch (error) {
       console.error('Get following error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
+  // Get user profile
+  app.get('/api/users/:userId', requireAuth, async (req: any, res) => {
+    try {
+      const { userId } = req.params;
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      const stats = await storage.getUserStats(userId);
+      const followers = await storage.getFollowers(userId);
+      const following = await storage.getFollowing(userId);
+      const isFollowing = followers.some(follower => follower.id === req.user.userId);
+
+      res.json({
+        ...user,
+        password: undefined, // Never send password
+        stats,
+        followerCount: followers.length,
+        followingCount: following.length,
+        isFollowing
+      });
+    } catch (error) {
+      console.error('Get user profile error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
+  // Update user profile
+  app.put('/api/users/:userId', requireAuth, async (req: any, res) => {
+    try {
+      const { userId } = req.params;
+      if (userId !== req.user.userId) {
+        return res.status(403).json({ message: 'You can only update your own profile' });
+      }
+
+      const updates = req.body;
+      const updatedUser = await storage.updateUser(userId, updates);
+      if (!updatedUser) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      res.json({
+        ...updatedUser,
+        password: undefined // Never send password
+      });
+    } catch (error) {
+      console.error('Update user profile error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
+  // Get user posts
+  app.get('/api/users/:userId/posts', async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const offset = parseInt(req.query.offset as string) || 0;
+      const limit = parseInt(req.query.limit as string) || 10;
+
+      const posts = await storage.getUserPosts(userId, offset, limit);
+      
+      // Get user likes if authenticated
+      const sessionId = req.headers.authorization?.replace('Bearer ', '');
+      const session = sessionId ? sessions.get(sessionId) : null;
+      
+      if (session) {
+        const userLikes = await storage.getUserLikes(session.userId);
+        const userBookmarks = await storage.getUserBookmarks(session.userId, 0, 1000);
+        const bookmarkedPostIds = userBookmarks.map(post => post.id);
+        
+        posts.forEach(post => {
+          post.isLiked = userLikes.some(like => like.postId === post.id);
+          post.isBookmarked = bookmarkedPostIds.includes(post.id);
+        });
+      }
+
+      res.json(posts);
+    } catch (error) {
+      console.error('Get user posts error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
+  // Bookmark routes
+  app.post('/api/posts/:postId/bookmark', requireAuth, async (req: any, res) => {
+    try {
+      const { postId } = req.params;
+      const isBookmarked = await storage.toggleBookmark(req.user.userId, postId);
+      
+      // Create notification for post author if bookmarked
+      if (isBookmarked) {
+        const post = await storage.getPost(postId);
+        if (post && post.author.id !== req.user.userId) {
+          await storage.createNotification(
+            post.author.id,
+            'bookmark',
+            `${req.user.username} bookmarked your post`,
+            postId,
+            req.user.userId
+          );
+        }
+      }
+      
+      res.json({ isBookmarked });
+    } catch (error) {
+      console.error('Toggle bookmark error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
+  // Get user bookmarks
+  app.get('/api/bookmarks', requireAuth, async (req: any, res) => {
+    try {
+      const offset = parseInt(req.query.offset as string) || 0;
+      const limit = parseInt(req.query.limit as string) || 10;
+      
+      const bookmarks = await storage.getUserBookmarks(req.user.userId, offset, limit);
+      
+      // Mark all as bookmarked and check likes
+      const userLikes = await storage.getUserLikes(req.user.userId);
+      bookmarks.forEach(post => {
+        post.isBookmarked = true;
+        post.isLiked = userLikes.some(like => like.postId === post.id);
+      });
+      
+      res.json(bookmarks);
+    } catch (error) {
+      console.error('Get bookmarks error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
+  // Notification routes
+  app.get('/api/notifications', requireAuth, async (req: any, res) => {
+    try {
+      const offset = parseInt(req.query.offset as string) || 0;
+      const limit = parseInt(req.query.limit as string) || 20;
+      
+      const notifications = await storage.getUserNotifications(req.user.userId, offset, limit);
+      res.json(notifications);
+    } catch (error) {
+      console.error('Get notifications error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
+  // Mark notification as read
+  app.put('/api/notifications/:notificationId/read', requireAuth, async (req: any, res) => {
+    try {
+      const { notificationId } = req.params;
+      const success = await storage.markNotificationAsRead(notificationId, req.user.userId);
+      
+      if (!success) {
+        return res.status(404).json({ message: 'Notification not found' });
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Mark notification as read error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
+  // Mark all notifications as read
+  app.put('/api/notifications/read-all', requireAuth, async (req: any, res) => {
+    try {
+      await storage.markAllNotificationsAsRead(req.user.userId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Mark all notifications as read error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
+  // Get unread notification count
+  app.get('/api/notifications/unread-count', requireAuth, async (req: any, res) => {
+    try {
+      const count = await storage.getUnreadNotificationCount(req.user.userId);
+      res.json({ count });
+    } catch (error) {
+      console.error('Get unread notification count error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
+  // Trending posts
+  app.get('/api/posts/trending', async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 10;
+      const posts = await storage.getTrendingPosts(limit);
+      
+      // Get user likes if authenticated
+      const sessionId = req.headers.authorization?.replace('Bearer ', '');
+      const session = sessionId ? sessions.get(sessionId) : null;
+      
+      if (session) {
+        const userLikes = await storage.getUserLikes(session.userId);
+        const userBookmarks = await storage.getUserBookmarks(session.userId, 0, 1000);
+        const bookmarkedPostIds = userBookmarks.map(post => post.id);
+        
+        posts.forEach(post => {
+          post.isLiked = userLikes.some(like => like.postId === post.id);
+          post.isBookmarked = bookmarkedPostIds.includes(post.id);
+        });
+      }
+      
+      res.json(posts);
+    } catch (error) {
+      console.error('Get trending posts error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
+  // Update post
+  app.put('/api/posts/:postId', requireAuth, async (req: any, res) => {
+    try {
+      const { postId } = req.params;
+      const { content } = req.body;
+      
+      const success = await storage.updatePost(postId, req.user.userId, content);
+      if (!success) {
+        return res.status(403).json({ message: 'You can only edit your own posts' });
+      }
+      
+      // Broadcast post update
+      broadcast({ type: 'POST_UPDATED', postId });
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Update post error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
+  // Delete comment
+  app.delete('/api/comments/:commentId', requireAuth, async (req: any, res) => {
+    try {
+      const { commentId } = req.params;
+      const success = await storage.deleteComment(commentId, req.user.userId);
+      
+      if (!success) {
+        return res.status(403).json({ message: 'You can only delete your own comments' });
+      }
+      
+      // Broadcast comment deletion
+      broadcast({ type: 'COMMENT_DELETED', commentId });
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Delete comment error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
+  // Analytics endpoint
+  app.get('/api/analytics/stats', requireAuth, async (req: any, res) => {
+    try {
+      const stats = await storage.getUserStats(req.user.userId);
+      res.json(stats);
+    } catch (error) {
+      console.error('Get analytics stats error:', error);
       res.status(500).json({ message: 'Internal server error' });
     }
   });

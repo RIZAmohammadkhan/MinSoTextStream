@@ -1,5 +1,5 @@
 import { forwardRef, useState } from "react";
-import { Heart, MessageCircle, MoreHorizontal, Trash2 } from "lucide-react";
+import { Heart, MessageCircle, MoreHorizontal, Trash2, Bookmark, Edit3, Share } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -11,6 +11,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 
 interface PostCardProps {
@@ -25,12 +26,12 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user }, ref) =>
 
   const likePostMutation = useMutation({
     mutationFn: async () => {
-      const sessionId = localStorage.getItem('minso_session');
       const response = await apiRequest("POST", `/api/posts/${post.id}/like`, {});
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/bookmarks'] });
     },
     onError: (error: any) => {
       toast({
@@ -43,22 +44,12 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user }, ref) =>
 
   const deletePostMutation = useMutation({
     mutationFn: async () => {
-      const sessionId = localStorage.getItem('minso_session');
-      const response = await fetch(`/api/posts/${post.id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${sessionId}`
-        }
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to delete post');
-      }
-      
+      const response = await apiRequest("DELETE", `/api/posts/${post.id}`, undefined);
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/bookmarks'] });
       toast({
         title: "Success",
         description: "Post deleted successfully",
@@ -72,6 +63,70 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user }, ref) =>
       });
     },
   });
+
+  const bookmarkPostMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", `/api/posts/${post.id}/bookmark`, {});
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/bookmarks'] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to toggle bookmark",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const copyPostLink = async () => {
+    // Create the post URL
+    const postUrl = `${window.location.origin}/post/${post.id}`;
+    
+    // Create social media style share text for Web Share API only
+    const shareTitle = `Post by @${post.author.username}`;
+    const shareText = post.content.length > 200 
+      ? `"${post.content.substring(0, 200)}..."` 
+      : `"${post.content}"`;
+    
+    // Try to use the Web Share API first (works on mobile and some desktop browsers)
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: postUrl,
+        });
+        
+        toast({
+          title: "Post Shared",
+          description: "Post shared successfully!",
+        });
+        return;
+      } catch (error) {
+        // User cancelled or share failed, fall back to clipboard
+        console.log('Share cancelled or failed, falling back to clipboard');
+      }
+    }
+    
+    // Fallback: Copy only the URL to clipboard (like modern social media)
+    try {
+      await navigator.clipboard.writeText(postUrl);
+      toast({
+        title: "Link Copied",
+        description: "Post link copied to clipboard!",
+      });
+    } catch (error) {
+      toast({
+        title: "Share Failed",
+        description: "Unable to copy link. Please copy the URL manually.",
+        variant: "destructive",
+      });
+    }
+  };
 
   const formatDateTime = (date: Date | string) => {
     const postDate = new Date(date);
@@ -170,32 +225,70 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user }, ref) =>
           </div>
           
           {/* Post Actions */}
-          <div className="flex items-center space-x-8">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => likePostMutation.mutate()}
-              disabled={likePostMutation.isPending}
-              className="flex items-center space-x-2 text-beige-text/60 hover:text-beige-text transition-colors duration-200 p-0 h-auto"
-              data-testid={`button-like-${post.id}`}
-            >
-              <Heart 
-                size={18} 
-                className={post.isLiked ? "fill-accent-beige text-accent-beige" : ""}
-              />
-              <span className="text-sm">{post.likeCount}</span>
-            </Button>
-            
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowComments(!showComments)}
-              className="flex items-center space-x-2 text-beige-text/60 hover:text-beige-text transition-colors duration-200 p-0 h-auto"
-              data-testid={`button-comments-${post.id}`}
-            >
-              <MessageCircle size={18} />
-              <span className="text-sm">{post.commentCount}</span>
-            </Button>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-8">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => likePostMutation.mutate()}
+                disabled={likePostMutation.isPending}
+                className="flex items-center space-x-2 text-beige-text/60 hover:text-beige-text transition-colors duration-200 p-0 h-auto"
+                data-testid={`button-like-${post.id}`}
+              >
+                <Heart 
+                  size={18} 
+                  className={`transition-all duration-200 ${
+                    post.isLiked 
+                      ? "fill-red-500 text-red-500 scale-110" 
+                      : "hover:text-red-400"
+                  }`}
+                />
+                <span className="text-sm">{post.likeCount}</span>
+              </Button>
+              
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowComments(!showComments)}
+                className="flex items-center space-x-2 text-beige-text/60 hover:text-beige-text transition-colors duration-200 p-0 h-auto"
+                data-testid={`button-comments-${post.id}`}
+              >
+                <MessageCircle size={18} />
+                <span className="text-sm">{post.commentCount}</span>
+              </Button>
+            </div>
+
+            <div className="flex items-center space-x-4">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => bookmarkPostMutation.mutate()}
+                disabled={bookmarkPostMutation.isPending}
+                className="text-beige-text/60 hover:text-beige-text transition-colors duration-200 p-0 h-auto"
+                data-testid={`button-bookmark-${post.id}`}
+                title={post.isBookmarked ? "Remove bookmark" : "Bookmark post"}
+              >
+                <Bookmark 
+                  size={18} 
+                  className={`transition-all duration-200 ${
+                    post.isBookmarked 
+                      ? "fill-yellow-500 text-yellow-500 scale-110" 
+                      : "hover:text-yellow-400"
+                  }`}
+                />
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={copyPostLink}
+                className="text-beige-text/60 hover:text-beige-text transition-colors duration-200 p-0 h-auto"
+                data-testid={`button-share-${post.id}`}
+                title="Copy post link"
+              >
+                <Share size={18} />
+              </Button>
+            </div>
           </div>
         </div>
       </div>
