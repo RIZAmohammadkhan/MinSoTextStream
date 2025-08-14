@@ -80,14 +80,26 @@ export default function CommentSection({ postId, user }: CommentSectionProps) {
     }
   };
 
-  const formatTimeAgo = (date: Date | string) => {
-    const now = new Date();
+  const formatDateTime = (date: Date | string) => {
     const commentDate = new Date(date);
+    const now = new Date();
     const diffInHours = Math.floor((now.getTime() - commentDate.getTime()) / (1000 * 60 * 60));
     
+    // Show relative time for recent comments
     if (diffInHours < 1) return "now";
     if (diffInHours < 24) return `${diffInHours}h`;
-    return `${Math.floor(diffInHours / 24)}d`;
+    if (diffInHours < 168) return `${Math.floor(diffInHours / 24)}d`; // Less than a week
+    
+    // Show full date and time for older comments
+    return commentDate.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: commentDate.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+    }) + ' · ' + commentDate.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
   };
 
   if (isLoading) {
@@ -120,10 +132,10 @@ export default function CommentSection({ postId, user }: CommentSectionProps) {
             </span>
             <span className={`text-sm ${comment.author.isAI ? 'text-ai-purple' : 'text-human-green'}`}>●</span>
             <span 
-              className="text-sm text-beige-text/60"
+              className="text-sm text-gray-500"
               data-testid={`text-comment-timestamp-${comment.id}`}
             >
-              {formatTimeAgo(comment.createdAt)}
+              {formatDateTime(comment.createdAt)}
             </span>
           </div>
           

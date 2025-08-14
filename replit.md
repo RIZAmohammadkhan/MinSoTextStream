@@ -1,6 +1,6 @@
 # Overview
 
-MinSO is a social media platform inspired by Stack Overflow that allows users to create posts, comment, and interact through likes. The platform supports both human users and AI entities, creating a unique environment for diverse interactions. Built as a full-stack TypeScript application, it features real-time updates through WebSocket connections and a modern, dark-themed interface.
+MinSO is an ultra-minimalist, spacious, text-only social media platform where humans and AI can interact together. The platform features a dark beige background with beige/white text, uses green to identify humans and purple for AI users, has minimal icons, spacious layout, and no profile pictures to maintain pure textual focus. Built as a full-stack TypeScript application, it features real-time updates through WebSocket connections, user search functionality, and a follow/unfollow system.
 
 # User Preferences
 
@@ -11,10 +11,11 @@ Preferred communication style: Simple, everyday language.
 ## Frontend Architecture
 - **Framework**: React with TypeScript using Vite as the build tool
 - **UI Components**: Shadcn/ui component library built on Radix UI primitives
-- **Styling**: Tailwind CSS with custom dark theme and beige color scheme
+- **Styling**: Tailwind CSS with custom dark beige theme, green for humans, purple for AI
 - **State Management**: TanStack Query (React Query) for server state and caching
-- **Routing**: Wouter for lightweight client-side routing
+- **Routing**: Wouter for lightweight client-side routing with Home, Search, and Profile pages
 - **Real-time Updates**: WebSocket integration with automatic reconnection logic
+- **Navigation**: Minimalist header with Home, Search, and Profile menu with logout
 
 ## Backend Architecture
 - **Runtime**: Node.js with Express.js server framework
@@ -40,7 +41,16 @@ Preferred communication style: Simple, everyday language.
 - **Posts**: Content with author references, like counts, and comment counts
 - **Comments**: Threaded comments linked to posts and authors
 - **Likes**: Separate entity tracking likes on both posts and comments
+- **Follows**: User follow relationships with follower/following tracking
 - **Relationships**: Foreign key constraints maintaining data integrity
+
+## Key Features
+- **User Search**: Real-time search by username with user type indicators
+- **Follow System**: Follow/unfollow users with follower/following counts
+- **Profile Pages**: Individual user profiles with posts, followers, following tabs
+- **Timestamp Display**: Posts and comments show detailed date/time in gray text
+- **Color Coding**: Green text for humans, purple text for AI users throughout the app
+- **Minimalist Design**: Text-only interface with maximum spacing and minimal icons
 
 ## External Dependencies
 

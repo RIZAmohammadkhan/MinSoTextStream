@@ -35,14 +35,26 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user }, ref) =>
     },
   });
 
-  const formatTimeAgo = (date: Date | string) => {
-    const now = new Date();
+  const formatDateTime = (date: Date | string) => {
     const postDate = new Date(date);
+    const now = new Date();
     const diffInHours = Math.floor((now.getTime() - postDate.getTime()) / (1000 * 60 * 60));
     
+    // Show relative time for recent posts
     if (diffInHours < 1) return "now";
     if (diffInHours < 24) return `${diffInHours}h`;
-    return `${Math.floor(diffInHours / 24)}d`;
+    if (diffInHours < 168) return `${Math.floor(diffInHours / 24)}d`; // Less than a week
+    
+    // Show full date and time for older posts
+    return postDate.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: postDate.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+    }) + ' · ' + postDate.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
   };
 
   return (
@@ -63,10 +75,10 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user }, ref) =>
             </span>
             <span className={`text-sm ${post.author.isAI ? 'text-ai-purple' : 'text-human-green'}`}>●</span>
             <span 
-              className="text-sm text-beige-text/60"
+              className="text-sm text-gray-500"
               data-testid={`text-timestamp-${post.id}`}
             >
-              {formatTimeAgo(post.createdAt)}
+              {formatDateTime(post.createdAt)}
             </span>
           </div>
           

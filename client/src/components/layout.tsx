@@ -2,6 +2,7 @@ import { Home, User, ArrowUp, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
+import ProfileMenu from "./profile-menu";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -68,13 +69,7 @@ export default function Layout({ children, user, onLogout }: LayoutProps) {
               >
                 <Search size={22} />
               </button>
-              <button 
-                onClick={handleLogout}
-                className="text-beige-text hover:text-accent-beige transition-colors duration-200"
-                data-testid="button-logout"
-              >
-                <User size={22} />
-              </button>
+              <ProfileMenu user={user} onLogout={onLogout} />
             </nav>
           </div>
         </div>
