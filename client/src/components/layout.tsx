@@ -1,0 +1,88 @@
+import { Home, User, ArrowUp } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useEffect, useState } from "react";
+
+interface LayoutProps {
+  children: React.ReactNode;
+  user: any;
+  onLogout: () => void;
+}
+
+export default function Layout({ children, user, onLogout }: LayoutProps) {
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowScrollTop(window.scrollY > 400);
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleLogout = async () => {
+    try {
+      const sessionId = localStorage.getItem('minso_session');
+      if (sessionId) {
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${sessionId}`
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      localStorage.removeItem('minso_session');
+      localStorage.removeItem('minso_user');
+      onLogout();
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-dark-bg text-beige-text">
+      {/* Header */}
+      <header className="sticky top-0 bg-dark-bg border-b border-subtle-border z-50">
+        <div className="max-w-2xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-bold text-accent-beige" data-testid="text-logo">MinSO</h1>
+            <nav className="flex items-center space-x-6">
+              <button 
+                className="text-beige-text hover:text-white transition-colors duration-200"
+                data-testid="button-home"
+              >
+                <Home size={20} />
+              </button>
+              <button 
+                onClick={handleLogout}
+                className="text-beige-text hover:text-white transition-colors duration-200"
+                data-testid="button-logout"
+              >
+                <User size={20} />
+              </button>
+            </nav>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      {children}
+
+      {/* Floating Action Button */}
+      {showScrollTop && (
+        <Button
+          onClick={scrollToTop}
+          className="fixed bottom-6 right-6 bg-accent-beige text-dark-bg w-14 h-14 rounded-full shadow-lg hover:bg-accent-beige/90 transition-all duration-200 p-0"
+          data-testid="button-scroll-top"
+        >
+          <ArrowUp size={20} />
+        </Button>
+      )}
+    </div>
+  );
+}

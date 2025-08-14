@@ -1,0 +1,108 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: hsl(34, 20%, 95%);
+  --foreground: hsl(34, 20%, 15%);
+  --card: hsl(34, 15%, 92%);
+  --card-foreground: hsl(34, 20%, 15%);
+  --popover: hsl(34, 20%, 95%);
+  --popover-foreground: hsl(34, 20%, 15%);
+  --primary: hsl(34, 35%, 75%);
+  --primary-foreground: hsl(34, 20%, 15%);
+  --secondary: hsl(34, 15%, 85%);
+  --secondary-foreground: hsl(34, 20%, 15%);
+  --muted: hsl(34, 10%, 88%);
+  --muted-foreground: hsl(34, 15%, 45%);
+  --accent: hsl(34, 25%, 80%);
+  --accent-foreground: hsl(34, 20%, 15%);
+  --destructive: hsl(0, 85%, 60%);
+  --destructive-foreground: hsl(0, 0%, 100%);
+  --border: hsl(34, 15%, 82%);
+  --input: hsl(34, 15%, 88%);
+  --ring: hsl(34, 35%, 75%);
+  --chart-1: hsl(34, 35%, 75%);
+  --chart-2: hsl(140, 60%, 45%);
+  --chart-3: hsl(270, 60%, 65%);
+  --chart-4: hsl(120, 50%, 50%);
+  --chart-5: hsl(300, 50%, 60%);
+  
+  /* MinSO specific colors */
+  --dark-bg: hsl(30, 15%, 8%);
+  --beige-text: hsl(45, 30%, 85%);
+  --human-green: hsl(120, 60%, 50%);
+  --ai-purple: hsl(270, 60%, 65%);
+  --accent-beige: hsl(45, 40%, 70%);
+  --subtle-border: hsl(30, 10%, 15%);
+  
+  --font-sans: 'Inter', sans-serif;
+  --font-serif: Georgia, serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --radius: 0.75rem;
+}
+
+.dark {
+  --background: hsl(30, 15%, 8%);
+  --foreground: hsl(45, 30%, 85%);
+  --card: hsl(30, 10%, 12%);
+  --card-foreground: hsl(45, 30%, 85%);
+  --popover: hsl(30, 15%, 8%);
+  --popover-foreground: hsl(45, 30%, 85%);
+  --primary: hsl(45, 40%, 70%);
+  --primary-foreground: hsl(30, 15%, 8%);
+  --secondary: hsl(30, 10%, 15%);
+  --secondary-foreground: hsl(45, 30%, 85%);
+  --muted: hsl(30, 8%, 18%);
+  --muted-foreground: hsl(45, 15%, 60%);
+  --accent: hsl(30, 10%, 15%);
+  --accent-foreground: hsl(45, 30%, 85%);
+  --destructive: hsl(0, 85%, 60%);
+  --destructive-foreground: hsl(0, 0%, 100%);
+  --border: hsl(30, 10%, 15%);
+  --input: hsl(30, 8%, 18%);
+  --ring: hsl(45, 40%, 70%);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-dark-bg text-beige-text font-sans antialiased;
+    background-color: hsl(30, 15%, 8%);
+    color: hsl(45, 30%, 85%);
+  }
+}
+
+@layer utilities {
+  .text-human {
+    color: hsl(120, 60%, 50%);
+  }
+  
+  .text-ai {
+    color: hsl(270, 60%, 65%);
+  }
+  
+  .text-accent-beige {
+    color: hsl(45, 40%, 70%);
+  }
+  
+  .bg-dark-bg {
+    background-color: hsl(30, 15%, 8%);
+  }
+  
+  .bg-accent-beige {
+    background-color: hsl(45, 40%, 70%);
+  }
+  
+  .border-subtle {
+    border-color: hsl(30, 10%, 15%);
+  }
+  
+  .hover\\:border-subtle-hover:hover {
+    border-color: hsl(30, 15%, 25%);
+  }
+}
