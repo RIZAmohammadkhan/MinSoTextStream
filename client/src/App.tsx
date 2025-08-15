@@ -4,6 +4,8 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import PageTransition from "./components/page-transition";
 import Home from "./pages/home";
 import Auth from "./pages/auth";
 import SearchPage from "./pages/search";
@@ -38,14 +40,33 @@ function Router() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-dark-bg flex items-center justify-center">
-        <div className="text-beige-text text-lg">Loading...</div>
-      </div>
+      <motion.div 
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="min-h-screen bg-dark-bg flex items-center justify-center"
+      >
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
+          className="text-beige-text text-lg"
+        >
+          Loading...
+        </motion.div>
+      </motion.div>
     );
   }
 
   if (!user) {
-    return <Auth onLogin={setUser} />;
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.5 }}
+      >
+        <Auth onLogin={setUser} />
+      </motion.div>
+    );
   }
 
   const handleLogout = () => {
@@ -55,17 +76,19 @@ function Router() {
   };
 
   return (
-    <Switch>
-      <Route path="/search" component={() => <SearchPage user={user} onLogout={handleLogout} />} />
-      <Route path="/profile/:userId?" component={(params) => <ProfilePage user={user} onLogout={handleLogout} userId={params.params?.userId} />} />
-      <Route path="/trending" component={() => <TrendingPage user={user} onLogout={handleLogout} />} />
-      <Route path="/messages" component={() => <MessagesPage user={user} onLogout={handleLogout} />} />
-      <Route path="/bookmarks" component={() => <BookmarksPage user={user} onLogout={handleLogout} />} />
-      <Route path="/notifications" component={() => <NotificationsPage user={user} onLogout={handleLogout} />} />
-      <Route path="/post/:postId" component={() => <PostPage user={user} />} />
-      <Route path="/" component={() => <Home user={user} onLogout={handleLogout} />} />
-      <Route path="*" component={() => <NotFoundPage user={user} onLogout={handleLogout} />} />
-    </Switch>
+    <PageTransition>
+      <Switch>
+        <Route path="/search" component={() => <SearchPage user={user} onLogout={handleLogout} />} />
+        <Route path="/profile/:userId?" component={(params) => <ProfilePage user={user} onLogout={handleLogout} userId={params.params?.userId} />} />
+        <Route path="/trending" component={() => <TrendingPage user={user} onLogout={handleLogout} />} />
+        <Route path="/messages" component={() => <MessagesPage user={user} onLogout={handleLogout} />} />
+        <Route path="/bookmarks" component={() => <BookmarksPage user={user} onLogout={handleLogout} />} />
+        <Route path="/notifications" component={() => <NotificationsPage user={user} onLogout={handleLogout} />} />
+        <Route path="/post/:postId" component={() => <PostPage user={user} />} />
+        <Route path="/" component={() => <Home user={user} onLogout={handleLogout} />} />
+        <Route path="*" component={() => <NotFoundPage user={user} onLogout={handleLogout} />} />
+      </Switch>
+    </PageTransition>
   );
 }
 

@@ -805,12 +805,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/users/:userId/follow', requireAuth, async (req: any, res) => {
     try {
       const { userId } = req.params;
-      const isFollowing = await storage.toggleFollow(req.user.userId, userId);
+      
+      // Check if userId is actually a username
+      let targetUserId = userId;
+      if (userId.match(/^[a-zA-Z0-9_]+$/) && !userId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)) {
+        // Looks like a username, find the actual user ID
+        const user = await storage.getUserByUsername(userId);
+        if (!user) {
+          return res.status(404).json({ message: 'User not found' });
+        }
+        targetUserId = user.id;
+      }
+      
+      const isFollowing = await storage.toggleFollow(req.user.userId, targetUserId);
       
       // Create notification for followed user
       if (isFollowing) {
         await storage.createNotification(
-          userId,
+          targetUserId,
           'follow',
           `${req.user.username} started following you`,
           undefined,
@@ -818,7 +830,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         );
       }
       
-      broadcast({ type: 'USER_FOLLOWED', followerId: req.user.userId, followingId: userId, isFollowing });
+      broadcast({ type: 'USER_FOLLOWED', followerId: req.user.userId, followingId: targetUserId, isFollowing });
       
       res.json({ isFollowing });
     } catch (error) {
@@ -831,7 +843,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/users/:userId/followers', requireAuth, async (req: any, res) => {
     try {
       const { userId } = req.params;
-      const followers = await storage.getFollowers(userId);
+      
+      // Check if userId is actually a username
+      let targetUserId = userId;
+      if (userId.match(/^[a-zA-Z0-9_]+$/) && !userId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)) {
+        const user = await storage.getUserByUsername(userId);
+        if (!user) {
+          return res.status(404).json({ message: 'User not found' });
+        }
+        targetUserId = user.id;
+      }
+      
+      const followers = await storage.getFollowers(targetUserId);
       res.json(followers);
     } catch (error) {
       console.error('Get followers error:', error);
@@ -843,7 +866,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/users/:userId/following', requireAuth, async (req: any, res) => {
     try {
       const { userId } = req.params;
-      const following = await storage.getFollowing(userId);
+      
+      // Check if userId is actually a username
+      let targetUserId = userId;
+      if (userId.match(/^[a-zA-Z0-9_]+$/) && !userId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)) {
+        const user = await storage.getUserByUsername(userId);
+        if (!user) {
+          return res.status(404).json({ message: 'User not found' });
+        }
+        targetUserId = user.id;
+      }
+      
+      const following = await storage.getFollowing(targetUserId);
       res.json(following);
     } catch (error) {
       console.error('Get following error:', error);
@@ -855,14 +889,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/users/:userId', requireAuth, async (req: any, res) => {
     try {
       const { userId } = req.params;
-      const user = await storage.getUser(userId);
+      
+      // Check if userId is actually a username (doesn't contain only numbers and hyphens typical of UUIDs)
+      let user;
+      if (userId.match(/^[a-zA-Z0-9_]+$/) && !userId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)) {
+        // Looks like a username, try to find by username
+        user = await storage.getUserByUsername(userId);
+      } else {
+        // Looks like a user ID, find by ID
+        user = await storage.getUser(userId);
+      }
+      
       if (!user) {
         return res.status(404).json({ message: 'User not found' });
       }
 
-      const stats = await storage.getUserStats(userId);
-      const followers = await storage.getFollowers(userId);
-      const following = await storage.getFollowing(userId);
+      const stats = await storage.getUserStats(user.id);
+      const followers = await storage.getFollowers(user.id);
+      const following = await storage.getFollowing(user.id);
       const isFollowing = followers.some(follower => follower.id === req.user.userId);
 
       res.json({
@@ -907,10 +951,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/users/:userId/posts', async (req, res) => {
     try {
       const { userId } = req.params;
+      
+      // Check if userId is actually a username
+      let targetUserId = userId;
+      if (userId.match(/^[a-zA-Z0-9_]+$/) && !userId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)) {
+        const user = await storage.getUserByUsername(userId);
+        if (!user) {
+          return res.status(404).json({ message: 'User not found' });
+        }
+        targetUserId = user.id;
+      }
+      
       const offset = parseInt(req.query.offset as string) || 0;
       const limit = parseInt(req.query.limit as string) || 10;
 
-      const posts = await storage.getUserPosts(userId, offset, limit);
+      const posts = await storage.getUserPosts(targetUserId, offset, limit);
       
       // Get user authentication (same logic as trending posts)
       const authHeader = req.headers.authorization;

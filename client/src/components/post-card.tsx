@@ -1,6 +1,7 @@
 import { forwardRef, useState } from "react";
 import { Heart, MessageCircle, MoreHorizontal, Trash2, Bookmark, Edit3, Share, ExternalLink, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { motion, AnimatePresence } from "framer-motion";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { notifications } from "@/lib/notifications";
 import { apiRequest } from "@/lib/queryClient";
@@ -200,12 +201,36 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user, showComme
     if (disableNavigation) return;
     
     const target = e.target as HTMLElement;
-    if (target.closest('button') || target.closest('[role="button"]') || target.closest('a')) {
+    
+    // Don't navigate if clicking on buttons, links, interactive elements, or comment section
+    if (target.closest('button') || 
+        target.closest('[role="button"]') || 
+        target.closest('a') ||
+        target.classList.contains('cursor-pointer') ||
+        target.closest('form') ||
+        target.closest('input') ||
+        target.closest('textarea') ||
+        target.closest('[data-testid*="comments-"]') ||
+        target.closest('.comment-section')) {
       return;
     }
     
-    // Navigate to post detail page
-    navigate(`/post/${post.id}`);
+    // Check if the click is within a reasonable margin from the edges
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+    
+    // Define margins from edges where clicks shouldn't trigger navigation
+    const marginX = 80; // 80px margin from left/right edges
+    const marginY = 40; // 40px margin from top/bottom edges
+    
+    // Only navigate if click is in the center area
+    if (clickX > marginX && 
+        clickX < rect.width - marginX && 
+        clickY > marginY && 
+        clickY < rect.height - marginY) {
+      navigate(`/post/${post.id}`);
+    }
   };
 
   const formatDateTime = (date: Date | string) => {
@@ -234,11 +259,11 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user, showComme
     <article 
       ref={ref}
       className={`border border-subtle-border rounded-lg p-8 hover:border-subtle-border/60 transition-all duration-200 mb-8 group relative ${
-        !disableNavigation ? 'cursor-pointer hover:bg-dark-bg/50' : ''
+        !disableNavigation ? 'hover:bg-dark-bg/50' : ''
       }`}
       data-testid={`post-${post.id}`}
       onClick={disableNavigation ? undefined : handlePostClick}
-      title={disableNavigation ? undefined : "Click to view post details"}
+      title={disableNavigation ? undefined : "Click in the center area to view post details"}
     >
       {/* Hover indicator - only show if navigation is enabled */}
       {!disableNavigation && (
@@ -246,14 +271,23 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user, showComme
           <ExternalLink size={16} className="text-beige-text/40" />
         </div>
       )}
+      
+      {/* Center click area indicator (only visible on hover) */}
+      {!disableNavigation && (
+        <div className="absolute inset-0 m-8 border-2 border-dashed border-beige-text/10 rounded opacity-0 group-hover:opacity-20 transition-opacity duration-200 pointer-events-none" />
+      )}
       <div className="flex items-start space-x-4">
         <div className="flex-1">
           {/* User Info */}
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-3">
               <span 
-                className={`font-semibold text-lg ${post.author.isAI ? 'text-ai-purple' : 'text-human-green'}`}
+                className={`font-semibold text-lg ${post.author.isAI ? 'text-ai-purple' : 'text-human-green'} cursor-pointer hover:underline`}
                 data-testid={`text-username-${post.id}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/profile/${post.author.id}`);
+                }}
               >
                 @{post.author.username}
               </span>
@@ -308,12 +342,15 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user, showComme
           
           {/* Post Content */}
           <div 
-            className="text-lg leading-relaxed mb-8 whitespace-pre-wrap text-beige-text cursor-pointer select-none"
+            className="text-lg leading-relaxed mb-8 whitespace-pre-wrap text-beige-text select-none relative"
             data-testid={`text-content-${post.id}`}
             onClick={handleDoubleTap}
             style={{ userSelect: 'none' }}
           >
             <MentionText content={post.content} />
+            {!disableNavigation && (
+              <div className="absolute inset-0 cursor-pointer" title="Double-tap to like, click to view post" />
+            )}
           </div>
           
           {/* Post Actions */}
@@ -419,19 +456,36 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user, showComme
       </div>
       
       {/* Comments Section */}
-      {showComments && (
-        <div className={showCommentsByDefault ? "mt-8 pt-8 border-t border-subtle-border/30" : "mt-8"}>
-          {showCommentsByDefault && (
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold text-beige-text flex items-center">
-                <MessageCircle size={18} className="mr-2" />
-                Comments
-              </h3>
-            </div>
-          )}
-          <CommentSection postId={post.id} user={user} />
-        </div>
-      )}
+      <AnimatePresence>
+        {showComments && (
+          <motion.div 
+            className={`comment-section ${showCommentsByDefault ? "mt-8 pt-8 border-t border-subtle-border/30" : "mt-8"}`}
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ 
+              duration: 0.45, 
+              ease: [0.25, 0.46, 0.45, 0.94],
+              height: { duration: 0.4 }
+            }}
+          >
+            {showCommentsByDefault && (
+              <motion.div 
+                className="mb-6"
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2, duration: 0.3 }}
+              >
+                <h3 className="text-lg font-semibold text-beige-text flex items-center">
+                  <MessageCircle size={18} className="mr-2" />
+                  Comments
+                </h3>
+              </motion.div>
+            )}
+            <CommentSection postId={post.id} user={user} />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </article>
   );
 });

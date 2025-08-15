@@ -4,6 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { motion, AnimatePresence } from "framer-motion";
+import { NavButton } from "./page-transition";
 import ProfileMenu from "./profile-menu";
 
 interface LayoutProps {
@@ -84,95 +86,81 @@ export default function Layout({ children, user, onLogout }: LayoutProps) {
   };
 
   const getNavButtonClass = (path: string) => 
-    `relative transition-colors duration-200 ${location === path ? 'text-accent-beige' : 'text-beige-text hover:text-accent-beige'}`;
+    `relative transition-all duration-300 ${location === path ? 'text-accent-beige' : 'text-beige-text hover:text-accent-beige'}`;
+
+  const createNavButton = (path: string, icon: React.ReactNode, title: string, badge?: React.ReactNode) => (
+    <NavButton
+      onClick={() => setLocation(path)}
+      isActive={location === path}
+      className={getNavButtonClass(path)}
+    >
+      <div className="relative flex items-center justify-center" title={title}>
+        {icon}
+        {badge}
+      </div>
+    </NavButton>
+  );
 
   return (
     <div className="min-h-screen bg-dark-bg text-beige-text">
       {/* Header */}
-      <header className="sticky top-0 bg-dark-bg border-b border-subtle-border z-50">
+      <header className="sticky top-0 bg-dark-bg/95 backdrop-blur-md border-b border-subtle-border z-50">
         <div className="max-w-3xl mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
-            <h1 
+            <motion.h1 
               className="text-3xl font-bold text-accent-beige tracking-tight cursor-pointer hover:text-accent-beige/80 transition-colors" 
               onClick={() => setLocation('/')}
               data-testid="text-logo"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              transition={{ type: "spring", stiffness: 400, damping: 17 }}
             >
               MinSO
-            </h1>
+            </motion.h1>
             <nav className="flex items-center space-x-6">
-              <button 
-                onClick={() => setLocation('/')}
-                className={getNavButtonClass('/')}
-                data-testid="button-home"
-                title="Home"
-              >
-                <Home size={22} />
-              </button>
+              {createNavButton('/', <Home size={22} />, "Home")}
               
-              <button 
-                onClick={() => setLocation('/search')}
-                className={getNavButtonClass('/search')}
-                data-testid="button-search"
-                title="Search"
-              >
-                <Search size={22} />
-              </button>
+              {createNavButton('/search', <Search size={22} />, "Search")}
 
-              <button 
-                onClick={() => setLocation('/trending')}
-                className={getNavButtonClass('/trending')}
-                data-testid="button-trending"
-                title="Trending"
-              >
-                <TrendingUp size={22} />
-              </button>
+              {createNavButton('/trending', <TrendingUp size={22} />, "Trending")}
 
-              <button 
-                onClick={() => setLocation('/messages')}
-                className={getNavButtonClass('/messages')}
-                data-testid="button-messages"
-                title="Messages"
-              >
-                <div className="relative">
-                  <Send size={22} />
-                  {messageData?.count > 0 && (
+              {createNavButton('/messages', <Send size={22} />, "Messages", 
+                messageData?.count > 0 && (
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    exit={{ scale: 0 }}
+                    className="absolute -top-2 -right-2"
+                  >
                     <Badge 
                       variant="destructive" 
-                      className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center text-xs p-0 bg-red-500 hover:bg-red-500"
+                      className="h-5 w-5 flex items-center justify-center text-xs p-0 bg-red-500 hover:bg-red-500"
                     >
                       {messageData.count > 99 ? '99+' : messageData.count}
                     </Badge>
-                  )}
-                </div>
-              </button>
+                  </motion.div>
+                )
+              )}
 
-              <button 
-                onClick={() => setLocation('/bookmarks')}
-                className={getNavButtonClass('/bookmarks')}
-                data-testid="button-bookmarks"
-                title="Bookmarks"
-              >
-                <Bookmark size={22} />
-              </button>
+              {createNavButton('/bookmarks', <Bookmark size={22} />, "Bookmarks")}
 
-              <button 
-                onClick={() => setLocation('/notifications')}
-                className={getNavButtonClass('/notifications')}
-                data-testid="button-notifications"
-                title="Notifications"
-              >
-                <div className="relative">
-                  <Bell size={22} />
-                  {notificationData?.count > 0 && (
+              {createNavButton('/notifications', <Bell size={22} />, "Notifications",
+                notificationData?.count > 0 && (
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    exit={{ scale: 0 }}
+                    className="absolute -top-2 -right-2"
+                  >
                     <Badge 
                       variant="destructive" 
-                      className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center text-xs p-0 bg-red-500 hover:bg-red-500"
+                      className="h-5 w-5 flex items-center justify-center text-xs p-0 bg-red-500 hover:bg-red-500"
                     >
                       {notificationData.count > 99 ? '99+' : notificationData.count}
                     </Badge>
-                  )}
-                </div>
-              </button>
+                  </motion.div>
+                )
+              )}
               
               <ProfileMenu user={user} onLogout={handleLogout} />
             </nav>
@@ -184,15 +172,25 @@ export default function Layout({ children, user, onLogout }: LayoutProps) {
       {children}
 
       {/* Floating Action Button */}
-      {showScrollTop && (
-        <Button
-          onClick={scrollToTop}
-          className="fixed bottom-6 right-6 bg-accent-beige text-dark-bg w-14 h-14 rounded-full shadow-lg hover:bg-accent-beige/90 transition-all duration-200 p-0"
-          data-testid="button-scroll-top"
-        >
-          <ArrowUp size={20} />
-        </Button>
-      )}
+      <AnimatePresence>
+        {showScrollTop && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.8, y: 20 }}
+            transition={{ type: "spring", stiffness: 400, damping: 25 }}
+            className="fixed bottom-6 right-6 z-50"
+          >
+            <Button
+              onClick={scrollToTop}
+              className="bg-accent-beige text-dark-bg w-14 h-14 rounded-full shadow-lg hover:bg-accent-beige/90 transition-all duration-200 p-0"
+              data-testid="button-scroll-top"
+            >
+              <ArrowUp size={20} />
+            </Button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

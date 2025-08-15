@@ -1,11 +1,14 @@
 import { useState } from "react";
 import { Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { motion, AnimatePresence } from "framer-motion";
+import { staggerContainer, staggerItem } from "@/components/page-transition";
 import MentionInput from "@/components/mention-input";
 import MentionText from "@/components/mention-text";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { notifications } from "@/lib/notifications";
 import { apiRequest } from "@/lib/queryClient";
+import { useLocation } from "wouter";
 import type { CommentWithAuthor } from "@shared/schema";
 
 interface CommentSectionProps {
@@ -17,6 +20,7 @@ export default function CommentSection({ postId, user }: CommentSectionProps) {
   const [newComment, setNewComment] = useState("");
   const [commentAnimations, setCommentAnimations] = useState<{[key: string]: 'like' | 'unlike' | null}>({});
     const queryClient = useQueryClient();
+  const [, navigate] = useLocation();
 
   const { data: comments, isLoading } = useQuery({
     queryKey: ['/api/posts', postId, 'comments'],
@@ -107,29 +111,63 @@ export default function CommentSection({ postId, user }: CommentSectionProps) {
 
   if (isLoading) {
     return (
-      <div className="mt-8 border-t border-subtle-border pt-8">
+      <motion.div 
+        className="mt-8 border-t border-subtle-border pt-8"
+        initial={{ opacity: 0, height: 0 }}
+        animate={{ opacity: 1, height: "auto" }}
+        exit={{ opacity: 0, height: 0 }}
+        transition={{ duration: 0.4 }}
+      >
         <div className="animate-pulse">
           <div className="h-4 w-1/4 bg-subtle-border rounded mb-2"></div>
           <div className="h-3 w-3/4 bg-subtle-border rounded mb-4"></div>
           <div className="h-4 w-full bg-subtle-border rounded"></div>
         </div>
-      </div>
+      </motion.div>
     );
   }
 
   return (
-    <div className="mt-8 border-t border-subtle-border pt-8" data-testid={`comments-${postId}`}>
+    <motion.div 
+      className="mt-8 border-t border-subtle-border pt-8" 
+      data-testid={`comments-${postId}`}
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: "auto" }}
+      exit={{ opacity: 0, height: 0 }}
+      transition={{ duration: 0.45, ease: [0.25, 0.46, 0.45, 0.94] }}
+      onClick={(e) => e.stopPropagation()}
+    >
       {/* Existing Comments */}
-      {comments?.map((comment: CommentWithAuthor) => (
-        <div 
-          key={comment.id} 
-          className="ml-6 mb-6 last:mb-0"
-          data-testid={`comment-${comment.id}`}
-        >
+      <motion.div
+        variants={staggerContainer}
+        initial="initial"
+        animate="animate"
+      >
+        <AnimatePresence>
+          {comments?.map((comment: CommentWithAuthor) => (
+            <motion.div 
+              key={comment.id} 
+              className="ml-6 mb-6 last:mb-0"
+              data-testid={`comment-${comment.id}`}
+              variants={staggerItem}
+              layout
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -20, scale: 0.95 }}
+              transition={{ 
+                duration: 0.4, 
+                ease: [0.25, 0.46, 0.45, 0.94],
+                layout: { duration: 0.3 }
+              }}
+            >
           <div className="flex items-center space-x-3 mb-3">
             <span 
-              className={`font-medium ${comment.author.isAI ? 'text-ai-purple' : 'text-human-green'}`}
+              className={`font-medium ${comment.author.isAI ? 'text-ai-purple' : 'text-human-green'} cursor-pointer hover:underline`}
               data-testid={`text-comment-username-${comment.id}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/profile/${comment.author.id}`);
+              }}
             >
               @{comment.author.username}
             </span>
@@ -186,13 +224,24 @@ export default function CommentSection({ postId, user }: CommentSectionProps) {
             />
             <span className="text-sm">{comment.likeCount}</span>
           </Button>
-        </div>
+        </motion.div>
       ))}
+      </AnimatePresence>
+      </motion.div>
       
       {/* Add Comment Form */}
-      <div className="ml-6 mt-6">
+      <motion.div 
+        className="ml-6 mt-6"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.2 }}
+      >
         <form onSubmit={handleSubmitComment}>
-          <div className="border border-subtle-border rounded p-4">
+          <motion.div 
+            className="border border-subtle-border rounded p-4"
+            whileFocus={{ borderColor: "#E8D5B7", boxShadow: "0 0 0 2px rgba(232, 213, 183, 0.1)" }}
+            transition={{ duration: 0.2 }}
+          >
             <MentionInput
               value={newComment}
               onChange={setNewComment}
@@ -201,19 +250,25 @@ export default function CommentSection({ postId, user }: CommentSectionProps) {
               minHeight="72px"
               maxLength={1000}
             />
-          </div>
+          </motion.div>
           <div className="flex justify-end mt-3">
-            <Button
-              type="submit"
-              disabled={!newComment.trim() || createCommentMutation.isPending}
-              className="bg-accent-beige text-dark-bg px-4 py-2 rounded-full font-medium hover:bg-accent-beige/90 transition-colors duration-200"
-              data-testid={`button-reply-${postId}`}
+            <motion.div
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              transition={{ type: "spring", stiffness: 400, damping: 17 }}
             >
-              {createCommentMutation.isPending ? "Replying..." : "Reply"}
-            </Button>
+              <Button
+                type="submit"
+                disabled={!newComment.trim() || createCommentMutation.isPending}
+                className="bg-accent-beige text-dark-bg px-4 py-2 rounded-full font-medium hover:bg-accent-beige/90 transition-colors duration-200"
+                data-testid={`button-reply-${postId}`}
+              >
+                {createCommentMutation.isPending ? "Replying..." : "Reply"}
+              </Button>
+            </motion.div>
           </div>
         </form>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

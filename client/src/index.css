@@ -3,6 +3,34 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Global smooth scrolling and improved interactions */
+* {
+  scroll-behavior: smooth;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  scroll-behavior: smooth;
+}
+
+/* Improved transitions for all interactive elements */
+button, a, input, textarea, select {
+  transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+/* Smooth focus states */
+*:focus {
+  outline: none;
+}
+
+*:focus-visible {
+  outline: 2px solid #E8D5B7;
+  outline-offset: 2px;
+}
+
 /* Instagram-like heart animation */
 @keyframes heart-like {
   0% {

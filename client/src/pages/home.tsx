@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
+import { staggerContainer, staggerItem } from "@/components/page-transition";
 import Layout from "../components/layout";
 import ComposePost from "../components/compose-post";
 import PostCard from "../components/post-card";
@@ -98,12 +100,28 @@ export default function Home({ user, onLogout }: HomeProps) {
 
   return (
     <Layout user={user} onLogout={onLogout}>
-      <main className="max-w-3xl mx-auto px-6 py-12">
-        <ComposePost user={user} />
+      <motion.main 
+        className="max-w-3xl mx-auto px-6 py-12"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.1 }}
+        >
+          <ComposePost user={user} />
+        </motion.div>
         
         {/* Feed Toggle */}
-        <div className="flex space-x-1 bg-subtle-border/30 rounded-lg p-1 mb-12">
-          <button
+        <motion.div 
+          className="flex space-x-1 bg-subtle-border/30 rounded-lg p-1 mb-12"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+        >
+          <motion.button
             onClick={() => setFeedType('discover')}
             className={`flex-1 px-6 py-3 rounded-md font-medium transition-colors duration-200 ${
               feedType === 'discover'
@@ -111,10 +129,13 @@ export default function Home({ user, onLogout }: HomeProps) {
                 : 'text-beige-text hover:text-beige-text/80'
             }`}
             data-testid="tab-discover"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            transition={{ type: "spring", stiffness: 400, damping: 17 }}
           >
             Discover
-          </button>
-          <button
+          </motion.button>
+          <motion.button
             onClick={() => setFeedType('following')}
             className={`flex-1 px-6 py-3 rounded-md font-medium transition-colors duration-200 ${
               feedType === 'following'
@@ -122,41 +143,69 @@ export default function Home({ user, onLogout }: HomeProps) {
                 : 'text-beige-text hover:text-beige-text/80'
             }`}
             data-testid="tab-following"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            transition={{ type: "spring", stiffness: 400, damping: 17 }}
           >
             Following
-          </button>
-        </div>
+          </motion.button>
+        </motion.div>
         
-        <div className="space-y-12">
+        <motion.div 
+          className="space-y-12"
+          variants={staggerContainer}
+          initial="initial"
+          animate="animate"
+        >
           {allPosts.map((post: PostWithAuthor, index) => (
-            <PostCard
+            <motion.div
               key={post.id}
-              post={post}
-              user={user}
-              ref={index === allPosts.length - 1 ? lastPostRef : null}
-            />
+              variants={staggerItem}
+              layout
+            >
+              <PostCard
+                post={post}
+                user={user}
+                ref={index === allPosts.length - 1 ? lastPostRef : null}
+              />
+            </motion.div>
           ))}
           
           {isFetchingNextPage && (
-            <div className="flex justify-center py-12">
+            <motion.div 
+              className="flex justify-center py-12"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
               <div className="text-beige-text/60 text-lg">Loading more conversations...</div>
-            </div>
+            </motion.div>
           )}
           
           {!hasNextPage && allPosts.length > 0 && (
-            <div className="flex justify-center py-12">
+            <motion.div 
+              className="flex justify-center py-12"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+            >
               <div className="text-beige-text/40 text-lg">You've reached the end of the conversation</div>
-            </div>
+            </motion.div>
           )}
           
           {allPosts.length === 0 && (
-            <div className="text-center py-20">
+            <motion.div 
+              className="text-center py-20"
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.4, type: "spring", stiffness: 200 }}
+            >
               <div className="text-beige-text/70 text-2xl mb-4">No conversations yet</div>
               <div className="text-beige-text/50 text-lg">Be the first to start a discussion!</div>
-            </div>
+            </motion.div>
           )}
-        </div>
-      </main>
+        </motion.div>
+      </motion.main>
     </Layout>
   );
 }

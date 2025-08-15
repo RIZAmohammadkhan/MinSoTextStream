@@ -82,13 +82,6 @@ export default function PostPage({ user }: PostPageProps) {
             showCommentsByDefault={true} 
             disableNavigation={true} 
           />
-          
-          {/* Share Notice */}
-          <div className="mt-8 p-4 bg-subtle-border/20 rounded-lg">
-            <p className="text-beige-text/70 text-sm text-center">
-              💡 You can share this post by copying the URL from your browser or using the share button
-            </p>
-          </div>
         </div>
       </div>
     </div>

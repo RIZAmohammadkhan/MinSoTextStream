@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Calendar, Users, UserPlus, Settings } from "lucide-react";
+import { Calendar, Users, UserPlus, Settings, Send } from "lucide-react";
 import Layout from "../components/layout";
 import PostCard from "../components/post-card";
 import SettingsDialog from "../components/settings-dialog";
@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { notifications } from "@/lib/notifications";
 import { apiRequest } from "../lib/queryClient";
+import { useLocation } from "wouter";
 import type { PostWithAuthor, User } from "@shared/schema";
 
 interface ProfilePageProps {
@@ -18,6 +19,7 @@ interface ProfilePageProps {
 export default function ProfilePage({ user, onLogout, userId }: ProfilePageProps) {
   const [activeTab, setActiveTab] = useState<'posts' | 'followers' | 'following'>('posts');
     const queryClient = useQueryClient();
+  const [, navigate] = useLocation();
   
   // Determine which user profile to show
   const profileUserId = userId || user.id;
@@ -143,6 +145,46 @@ export default function ProfilePage({ user, onLogout, userId }: ProfilePageProps
     });
   };
 
+  const handleDM = async () => {
+    // Don't allow DM to self
+    if (profileUserId === user?.id) {
+      notifications.error("Error", "You can't message yourself!");
+      return;
+    }
+
+    try {
+      // Try to find existing conversation with this user
+      const sessionId = localStorage.getItem('minso_session');
+      const response = await fetch('/api/dm/conversations', {
+        headers: {
+          'Authorization': `Bearer ${sessionId}`
+        }
+      });
+
+      if (response.ok) {
+        const conversations = await response.json();
+        const existingConversation = conversations.find((conv: any) => 
+          conv.participant.id === profileUserId
+        );
+
+        if (existingConversation) {
+          // Navigate to existing conversation
+          navigate(`/messages?conversation=${existingConversation.id}`);
+        } else {
+          // Navigate to messages with the user ID to start new conversation
+          navigate(`/messages?user=${profileUserId}`);
+        }
+      } else {
+        // If we can't fetch conversations, just navigate to messages
+        navigate(`/messages?user=${profileUserId}`);
+      }
+    } catch (error) {
+      console.error('Error handling DM:', error);
+      // Fallback: just navigate to messages
+      navigate('/messages');
+    }
+  };
+
   const renderTabContent = () => {
     switch (activeTab) {
       case 'posts':
@@ -204,15 +246,29 @@ export default function ProfilePage({ user, onLogout, userId }: ProfilePageProps
                 className="border border-subtle-border rounded-lg p-6"
                 data-testid={`follower-${follower.id}`}
               >
-                <div className="flex items-center space-x-3 mb-3">
-                  <span 
-                    className={`font-semibold text-lg ${follower.isAI ? 'text-ai-purple' : 'text-human-green'}`}
-                  >
-                    @{follower.username}
-                  </span>
-                  <span className={`text-sm px-2 py-1 rounded-full ${follower.isAI ? 'bg-ai-purple/20 text-ai-purple' : 'bg-human-green/20 text-human-green'}`}>
-                    {follower.isAI ? 'AI' : 'Human'}
-                  </span>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center space-x-3">
+                    <span 
+                      className={`font-semibold text-lg ${follower.isAI ? 'text-ai-purple' : 'text-human-green'} cursor-pointer hover:underline`}
+                      onClick={() => navigate(`/profile/${follower.id}`)}
+                    >
+                      @{follower.username}
+                    </span>
+                    <span className={`text-sm px-2 py-1 rounded-full ${follower.isAI ? 'bg-ai-purple/20 text-ai-purple' : 'bg-human-green/20 text-human-green'}`}>
+                      {follower.isAI ? 'AI' : 'Human'}
+                    </span>
+                  </div>
+                  {follower.id !== user.id && (
+                    <Button
+                      onClick={() => navigate(`/messages?user=${follower.id}`)}
+                      size="sm"
+                      className="bg-accent-beige text-dark-bg hover:bg-accent-beige/90"
+                      title={`Message @${follower.username}`}
+                    >
+                      <Send size={14} className="mr-1" />
+                      DM
+                    </Button>
+                  )}
                 </div>
                 {follower.bio && (
                   <div className="text-base text-beige-text/80 leading-relaxed">
@@ -242,15 +298,29 @@ export default function ProfilePage({ user, onLogout, userId }: ProfilePageProps
                 className="border border-subtle-border rounded-lg p-6"
                 data-testid={`following-${followedUser.id}`}
               >
-                <div className="flex items-center space-x-3 mb-3">
-                  <span 
-                    className={`font-semibold text-lg ${followedUser.isAI ? 'text-ai-purple' : 'text-human-green'}`}
-                  >
-                    @{followedUser.username}
-                  </span>
-                  <span className={`text-sm px-2 py-1 rounded-full ${followedUser.isAI ? 'bg-ai-purple/20 text-ai-purple' : 'bg-human-green/20 text-human-green'}`}>
-                    {followedUser.isAI ? 'AI' : 'Human'}
-                  </span>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center space-x-3">
+                    <span 
+                      className={`font-semibold text-lg ${followedUser.isAI ? 'text-ai-purple' : 'text-human-green'} cursor-pointer hover:underline`}
+                      onClick={() => navigate(`/profile/${followedUser.id}`)}
+                    >
+                      @{followedUser.username}
+                    </span>
+                    <span className={`text-sm px-2 py-1 rounded-full ${followedUser.isAI ? 'bg-ai-purple/20 text-ai-purple' : 'bg-human-green/20 text-human-green'}`}>
+                      {followedUser.isAI ? 'AI' : 'Human'}
+                    </span>
+                  </div>
+                  {followedUser.id !== user.id && (
+                    <Button
+                      onClick={() => navigate(`/messages?user=${followedUser.id}`)}
+                      size="sm"
+                      className="bg-accent-beige text-dark-bg hover:bg-accent-beige/90"
+                      title={`Message @${followedUser.username}`}
+                    >
+                      <Send size={14} className="mr-1" />
+                      DM
+                    </Button>
+                  )}
                 </div>
                 {followedUser.bio && (
                   <div className="text-base text-beige-text/80 leading-relaxed">
@@ -370,24 +440,34 @@ export default function ProfilePage({ user, onLogout, userId }: ProfilePageProps
             {/* Action Buttons */}
             <div className="flex items-center space-x-4">
               {!isOwnProfile && (
-                <Button
-                  onClick={() => followMutation.mutate()}
-                  disabled={followMutation.isPending}
-                  className={
-                    profileUser.isFollowing
-                      ? "bg-subtle-border text-beige-text hover:bg-red-600 hover:text-white"
-                      : "bg-accent-beige text-dark-bg hover:bg-accent-beige/90"
-                  }
-                  data-testid="button-follow"
-                >
-                  <UserPlus size={16} className="mr-2" />
-                  {followMutation.isPending 
-                    ? 'Loading...' 
-                    : profileUser.isFollowing 
-                    ? 'Unfollow' 
-                    : 'Follow'
-                  }
-                </Button>
+                <>
+                  <Button
+                    onClick={() => followMutation.mutate()}
+                    disabled={followMutation.isPending}
+                    className={
+                      profileUser.isFollowing
+                        ? "bg-subtle-border text-beige-text hover:bg-red-600 hover:text-white"
+                        : "bg-accent-beige text-dark-bg hover:bg-accent-beige/90"
+                    }
+                    data-testid="button-follow"
+                  >
+                    <UserPlus size={16} className="mr-2" />
+                    {followMutation.isPending 
+                      ? 'Loading...' 
+                      : profileUser.isFollowing 
+                      ? 'Unfollow' 
+                      : 'Follow'
+                    }
+                  </Button>
+                  <Button
+                    onClick={handleDM}
+                    className="bg-blue-600 text-white hover:bg-blue-700"
+                    data-testid="button-dm"
+                  >
+                    <Send size={16} className="mr-2" />
+                    Message
+                  </Button>
+                </>
               )}
               
               {isOwnProfile && (

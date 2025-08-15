@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { motion, AnimatePresence } from "framer-motion";
+import { staggerContainer, staggerItem } from "@/components/page-transition";
 import Layout from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -479,23 +481,58 @@ export default function MessagesPage({ user, onLogout }: MessagesPageProps) {
     // No keys found, trying to generate new ones
     return (
       <Layout user={user} onLogout={onLogout}>
-        <div className="max-w-3xl mx-auto px-6 py-8">
+        <motion.div 
+          className="max-w-3xl mx-auto px-6 py-8"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+        >
           <div className="text-center">
-            <MessageCircle size={48} className="mx-auto mb-4 text-beige-text/50" />
-            <h2 className="text-2xl font-bold mb-2">Setting up encrypted messaging...</h2>
-            <p className="text-beige-text/70">Generating your encryption keys for secure communication.</p>
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
+            >
+              <MessageCircle size={48} className="mx-auto mb-4 text-beige-text/50" />
+            </motion.div>
+            <motion.h2 
+              className="text-2xl font-bold mb-2"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3, duration: 0.4 }}
+            >
+              Setting up encrypted messaging...
+            </motion.h2>
+            <motion.p 
+              className="text-beige-text/70"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4, duration: 0.4 }}
+            >
+              Generating your encryption keys for secure communication.
+            </motion.p>
           </div>
-        </div>
+        </motion.div>
       </Layout>
     );
   }
 
   return (
     <Layout user={user} onLogout={onLogout}>
-      <div className="max-w-7xl mx-auto px-6 py-4">
+      <motion.div 
+        className="max-w-7xl mx-auto px-6 py-4"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.5 }}
+      >
         <div className="flex gap-6 h-[calc(100vh-120px)]">
           {/* Conversations List */}
-          <div className="w-1/3 min-w-[320px]">
+          <motion.div 
+            className="w-1/3 min-w-[320px]"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+          >
             <Card className="h-full bg-dark-card border-subtle-border shadow-lg">
               <CardHeader className="pb-3 border-b border-subtle-border">
                 <div className="flex items-center justify-between">
@@ -573,24 +610,44 @@ export default function MessagesPage({ user, onLogout }: MessagesPageProps) {
               </CardHeader>
               <CardContent className="p-0 overflow-y-auto">
                 {conversations.length === 0 ? (
-                  <div className="p-8 text-center text-beige-text/50">
-                    <MessageCircle size={48} className="mx-auto mb-4 text-beige-text/30" />
+                  <motion.div 
+                    className="p-8 text-center text-beige-text/50"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.3, duration: 0.4 }}
+                  >
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ delay: 0.4, type: "spring", stiffness: 200 }}
+                    >
+                      <MessageCircle size={48} className="mx-auto mb-4 text-beige-text/30" />
+                    </motion.div>
                     <h3 className="font-medium mb-2">No conversations yet</h3>
                     <p className="text-sm">Start a new conversation to begin messaging</p>
-                  </div>
+                  </motion.div>
                 ) : (
-                  conversations.map((conversation: ConversationWithParticipant) => (
-                    <div
-                      key={conversation.id}
-                      onClick={() => setSelectedConversation(conversation.id)}
-                      className={`p-4 border-b border-subtle-border cursor-pointer transition-all duration-200 ${
-                        selectedConversation === conversation.id 
-                          ? 'bg-accent-beige/10 border-l-4 border-l-accent-beige shadow-inner' 
-                          : conversation.unreadCount > 0 
-                            ? 'bg-dark-bg/20 hover:bg-dark-bg/40 border-l-2 border-l-accent-beige/50' 
-                            : 'hover:bg-dark-bg/30'
-                      }`}
-                    >
+                  <motion.div
+                    variants={staggerContainer}
+                    initial="initial"
+                    animate="animate"
+                  >
+                    {conversations.map((conversation: ConversationWithParticipant) => (
+                      <motion.div
+                        key={conversation.id}
+                        variants={staggerItem}
+                        onClick={() => setSelectedConversation(conversation.id)}
+                        className={`p-4 border-b border-subtle-border cursor-pointer transition-all duration-200 ${
+                          selectedConversation === conversation.id 
+                            ? 'bg-accent-beige/10 border-l-4 border-l-accent-beige shadow-inner' 
+                            : conversation.unreadCount > 0 
+                              ? 'bg-dark-bg/20 hover:bg-dark-bg/40 border-l-2 border-l-accent-beige/50' 
+                              : 'hover:bg-dark-bg/30'
+                        }`}
+                        whileHover={{ x: 4 }}
+                        whileTap={{ scale: 0.98 }}
+                        transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                      >
                       <div className="flex items-center gap-3">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-1">
@@ -637,15 +694,21 @@ export default function MessagesPage({ user, onLogout }: MessagesPageProps) {
                           )}
                         </div>
                       </div>
-                    </div>
-                  ))
+                    </motion.div>
+                  ))}
+                  </motion.div>
                 )}
               </CardContent>
             </Card>
-          </div>
+          </motion.div>
 
           {/* Chat Area */}
-          <div className="flex-1">
+          <motion.div 
+            className="flex-1"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+          >
             {selectedConversation || selectedUser ? (
               <Card className="h-full bg-dark-card border-subtle-border shadow-lg flex flex-col">
                 <CardHeader className="pb-4 border-b border-subtle-border bg-dark-bg/40 backdrop-blur-sm">
@@ -826,9 +889,9 @@ export default function MessagesPage({ user, onLogout }: MessagesPageProps) {
                 </div>
               </Card>
             )}
-          </div>
+          </motion.div>
         </div>
-      </div>
+      </motion.div>
     </Layout>
   );
 }
