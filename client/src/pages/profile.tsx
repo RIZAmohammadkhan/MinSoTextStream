@@ -461,7 +461,7 @@ export default function ProfilePage({ user, onLogout, userId }: ProfilePageProps
                   </Button>
                   <Button
                     onClick={handleDM}
-                    className="bg-blue-600 text-white hover:bg-blue-700"
+                    className="bg-accent-beige text-dark-bg hover:bg-accent-beige/90"
                     data-testid="button-dm"
                   >
                     <Send size={16} className="mr-2" />
