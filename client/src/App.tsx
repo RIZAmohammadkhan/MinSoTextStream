@@ -11,6 +11,7 @@ import ProfilePage from "./pages/profile";
 import TrendingPage from "./pages/trending";
 import BookmarksPage from "./pages/bookmarks";
 import NotificationsPage from "./pages/notifications";
+import MessagesPage from "./pages/messages";
 import PostPage from "./pages/post";
 import NotFoundPage from "./pages/not-found";
 
@@ -58,6 +59,7 @@ function Router() {
       <Route path="/search" component={() => <SearchPage user={user} onLogout={handleLogout} />} />
       <Route path="/profile/:userId?" component={(params) => <ProfilePage user={user} onLogout={handleLogout} userId={params.params?.userId} />} />
       <Route path="/trending" component={() => <TrendingPage user={user} onLogout={handleLogout} />} />
+      <Route path="/messages" component={() => <MessagesPage user={user} onLogout={handleLogout} />} />
       <Route path="/bookmarks" component={() => <BookmarksPage user={user} onLogout={handleLogout} />} />
       <Route path="/notifications" component={() => <NotificationsPage user={user} onLogout={handleLogout} />} />
       <Route path="/post/:postId" component={() => <PostPage user={user} />} />

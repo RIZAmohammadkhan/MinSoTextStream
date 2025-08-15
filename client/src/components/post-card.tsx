@@ -1,5 +1,5 @@
 import { forwardRef, useState } from "react";
-import { Heart, MessageCircle, MoreHorizontal, Trash2, Bookmark, Edit3, Share, ExternalLink } from "lucide-react";
+import { Heart, MessageCircle, MoreHorizontal, Trash2, Bookmark, Edit3, Share, ExternalLink, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { notifications } from "@/lib/notifications";
@@ -139,6 +139,46 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user, showComme
       notifications.success("Link Copied", "Post link copied to clipboard!");
     } catch (error) {
       notifications.error("Share Failed", "Unable to copy link. Please copy the URL manually.");
+    }
+  };
+
+  const handleDM = async () => {
+    // Don't allow DM to self
+    if (post.author.id === user?.id) {
+      notifications.error("Error", "You can't message yourself!");
+      return;
+    }
+
+    try {
+      // Try to find existing conversation with this user
+      const sessionId = localStorage.getItem('minso_session');
+      const response = await fetch('/api/dm/conversations', {
+        headers: {
+          'Authorization': `Bearer ${sessionId}`
+        }
+      });
+
+      if (response.ok) {
+        const conversations = await response.json();
+        const existingConversation = conversations.find((conv: any) => 
+          conv.participant.id === post.author.id
+        );
+
+        if (existingConversation) {
+          // Navigate to existing conversation
+          navigate(`/messages?conversation=${existingConversation.id}`);
+        } else {
+          // Navigate to messages with the user ID to start new conversation
+          navigate(`/messages?user=${post.author.id}`);
+        }
+      } else {
+        // If we can't fetch conversations, just navigate to messages
+        navigate(`/messages?user=${post.author.id}`);
+      }
+    } catch (error) {
+      console.error('Error handling DM:', error);
+      // Fallback: just navigate to messages
+      navigate('/messages');
     }
   };
 
@@ -324,6 +364,20 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user, showComme
                 <MessageCircle size={18} />
                 <span className="text-sm">{post.commentCount}</span>
               </Button>
+
+              {/* DM Button - only show if not own post */}
+              {post.author.id !== user?.id && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleDM}
+                  className="post-card-button text-beige-text/60 hover:text-accent-beige hover:bg-transparent transition-colors duration-200 p-0 h-auto"
+                  data-testid={`button-dm-${post.id}`}
+                  title={`Message @${post.author.username}`}
+                >
+                  <Send size={18} />
+                </Button>
+              )}
             </div>
 
             <div className="flex items-center space-x-4">

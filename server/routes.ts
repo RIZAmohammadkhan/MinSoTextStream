@@ -2,8 +2,9 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { insertUserSchema, insertPostSchema, insertCommentSchema } from "@shared/schema";
+import { insertUserSchema, insertPostSchema, insertCommentSchema, insertMessageSchema } from "@shared/schema";
 import { extractMentions, createMentionNotificationMessage } from "@shared/mention-utils";
+import { generateKeyPair, encryptPrivateKey } from "@shared/encryption-utils";
 import { z } from "zod";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
@@ -128,6 +129,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
       
       const user = await storage.createUser(hashedUserData);
+      
+      // Generate encryption keys automatically for the new user
+      try {
+        const keyPair = generateKeyPair();
+        
+        // For demo purposes, we'll use a simple encryption of private key with user's password
+        // In production, this should be properly encrypted with additional security measures
+        const encryptedPrivateKey = encryptPrivateKey(keyPair.privateKey, userData.password);
+        
+        // Store the user's encryption keys
+        await storage.createUserKeys(user.id, keyPair.publicKey, encryptedPrivateKey);
+        
+        console.log(`Generated encryption keys for user: ${user.username}`);
+      } catch (keyError) {
+        console.error('Failed to generate encryption keys for user:', keyError);
+        // Don't fail registration if key generation fails, but log it
+        // User can regenerate keys later if needed
+      }
       
       // Generate JWT token
       const jwtToken = generateJWT(user.id, user.username);
@@ -1081,6 +1100,268 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(stats);
     } catch (error) {
       console.error('Get analytics stats error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
+  // DM Routes
+  
+  // Generate user keys on registration/first DM
+  app.post('/api/dm/keys', requireAuth, async (req: any, res) => {
+    try {
+      const { publicKey, encryptedPrivateKey } = req.body;
+      
+      if (!publicKey || !encryptedPrivateKey) {
+        return res.status(400).json({ message: 'Public key and encrypted private key are required' });
+      }
+      
+      const success = await storage.createUserKeys(req.user.userId, publicKey, encryptedPrivateKey);
+      
+      if (!success) {
+        return res.status(409).json({ message: 'User keys already exist' });
+      }
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Create user keys error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
+  // Get user's public key
+  app.get('/api/dm/keys/:userId', requireAuth, async (req: any, res) => {
+    try {
+      const { userId } = req.params;
+      const userKeys = await storage.getUserPublicKey(userId);
+      
+      if (!userKeys) {
+        return res.status(404).json({ message: 'User keys not found' });
+      }
+      
+      res.json({ publicKey: userKeys.publicKey });
+    } catch (error) {
+      console.error('Get user public key error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
+  // Get user's own keys
+  app.get('/api/dm/keys', requireAuth, async (req: any, res) => {
+    try {
+      const userKeys = await storage.getUserKeys(req.user.userId);
+      
+      if (!userKeys) {
+        return res.status(404).json({ message: 'User keys not found' });
+      }
+      
+      res.json(userKeys);
+    } catch (error) {
+      console.error('Get user keys error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
+  // Get conversations list
+  app.get('/api/dm/conversations', requireAuth, async (req: any, res) => {
+    try {
+      const conversations = await storage.getUserConversations(req.user.userId);
+      res.json(conversations);
+    } catch (error) {
+      console.error('Get conversations error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
+  // Get conversation messages
+  app.get('/api/dm/conversations/:conversationId/messages', requireAuth, async (req: any, res) => {
+    try {
+      const { conversationId } = req.params;
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 50;
+      
+      // Verify user is part of this conversation
+      const isParticipant = await storage.isConversationParticipant(conversationId, req.user.userId);
+      if (!isParticipant) {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+      
+      const messages = await storage.getConversationMessages(conversationId, page, limit);
+      res.json(messages);
+    } catch (error) {
+      console.error('Get conversation messages error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
+  // Send message
+  app.post('/api/dm/messages', requireAuth, async (req: any, res) => {
+    try {
+      const data = req.body;
+      const validatedData = insertMessageSchema.parse(data);
+      
+      let conversationId = validatedData.conversationId;
+      
+      // If no conversation ID, create new conversation
+      if (!conversationId && validatedData.recipientId) {
+        conversationId = await storage.createConversation(req.user.userId, validatedData.recipientId);
+      }
+      
+      if (!conversationId) {
+        return res.status(400).json({ message: 'Conversation ID or recipient ID required' });
+      }
+      
+      // Get participants
+      const participants = await storage.getConversationParticipants(conversationId);
+      const recipient = participants.find(p => p.id !== req.user.userId);
+      
+      if (!recipient) {
+        return res.status(404).json({ message: 'Recipient not found' });
+      }
+      
+      // Check that both users have encryption keys
+      const senderKeys = await storage.getUserKeys(req.user.userId);
+      const recipientKeys = await storage.getUserKeys(recipient.id);
+      
+      if (!senderKeys) {
+        return res.status(400).json({ message: 'Sender has not set up encryption keys' });
+      }
+      
+      if (!recipientKeys) {
+        return res.status(400).json({ message: 'Recipient has not set up encryption keys. Ask them to visit the Messages page first.' });
+      }
+      
+      // The client should send us the encrypted content
+      const { 
+        encryptedContent, 
+        encryptedKey, 
+        iv,
+        senderEncryptedContent,
+        senderEncryptedKey,
+        senderIv
+      } = req.body;
+      
+      if (!encryptedContent || !encryptedKey || !iv) {
+        return res.status(400).json({ message: 'Encrypted message data required' });
+      }
+      
+      // Create the message with both encrypted versions
+      const message = await storage.createMessage(
+        conversationId,
+        req.user.userId,
+        encryptedContent,
+        encryptedKey,
+        iv,
+        senderEncryptedContent,
+        senderEncryptedKey,
+        senderIv
+      );
+      
+      // Broadcast to WebSocket clients
+      broadcast({
+        type: 'NEW_MESSAGE',
+        conversationId,
+        message,
+        recipientId: recipient.id
+      });
+      
+      res.json({ ...message, conversationId });
+    } catch (error) {
+      console.error('Send message error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
+  // Mark messages as read
+  app.put('/api/dm/conversations/:conversationId/read', requireAuth, async (req: any, res) => {
+    try {
+      const { conversationId } = req.params;
+      
+      // Verify user is part of this conversation
+      const isParticipant = await storage.isConversationParticipant(conversationId, req.user.userId);
+      if (!isParticipant) {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+      
+      await storage.markMessagesAsRead(conversationId, req.user.userId);
+      
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Mark messages as read error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
+  // Search users for new conversation
+  app.get('/api/dm/users/search', requireAuth, async (req: any, res) => {
+    try {
+      const query = req.query.q as string;
+      
+      if (!query || query.length < 2) {
+        return res.json([]);
+      }
+      
+      const users = await storage.searchUsersForDM(query, req.user.userId);
+      res.json(users);
+    } catch (error) {
+      console.error('Search users error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
+  // Test endpoint to check if user has encryption keys
+  app.get('/api/dm/test-keys/:userId?', requireAuth, async (req: any, res) => {
+    try {
+      const userId = req.params.userId || req.user.userId;
+      const userKeys = await storage.getUserKeys(userId);
+      
+      res.json({
+        hasKeys: !!userKeys,
+        keyInfo: userKeys ? {
+          id: userKeys.id,
+          userId: userKeys.userId,
+          hasPublicKey: !!userKeys.publicKey,
+          hasPrivateKey: !!userKeys.encryptedPrivateKey,
+          keyVersion: userKeys.keyVersion,
+          createdAt: userKeys.createdAt
+        } : null
+      });
+    } catch (error) {
+      console.error('Test keys error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
+  // Get unread message count
+  app.get('/api/dm/unread-count', requireAuth, async (req: any, res) => {
+    try {
+      const count = await storage.getUnreadMessageCount(req.user.userId);
+      res.json({ count });
+    } catch (error) {
+      console.error('Get unread message count error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
+  // Mark messages as seen when user opens a conversation
+  app.post('/api/dm/conversations/:conversationId/mark-seen', requireAuth, async (req: any, res) => {
+    try {
+      const { conversationId } = req.params;
+      await storage.markConversationMessagesAsSeen(conversationId, req.user.userId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Mark messages as seen error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
+  // Mark specific message as seen (for read receipts)
+  app.post('/api/dm/messages/:messageId/mark-seen', requireAuth, async (req: any, res) => {
+    try {
+      const { messageId } = req.params;
+      await storage.markMessageAsSeen(messageId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Mark message as seen error:', error);
       res.status(500).json({ message: 'Internal server error' });
     }
   });

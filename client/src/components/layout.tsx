@@ -1,4 +1,4 @@
-import { Home, User, ArrowUp, Search, Bell, Bookmark, TrendingUp } from "lucide-react";
+import { Home, User, ArrowUp, Search, Bell, Bookmark, TrendingUp, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useEffect, useState } from "react";
@@ -30,6 +30,23 @@ export default function Layout({ children, user, onLogout }: LayoutProps) {
       return response.json();
     },
     refetchInterval: 30000, // Refetch every 30 seconds
+    enabled: !!user
+  });
+
+  // Fetch unread message count
+  const { data: messageData } = useQuery({
+    queryKey: ['/api/dm/unread-count'],
+    queryFn: async () => {
+      const sessionId = localStorage.getItem('minso_session');
+      const response = await fetch('/api/dm/unread-count', {
+        headers: {
+          'Authorization': `Bearer ${sessionId}`
+        }
+      });
+      if (!response.ok) throw new Error('Failed to fetch message count');
+      return response.json();
+    },
+    refetchInterval: 10000, // Refetch every 10 seconds for more responsive messaging
     enabled: !!user
   });
 
@@ -108,6 +125,25 @@ export default function Layout({ children, user, onLogout }: LayoutProps) {
                 title="Trending"
               >
                 <TrendingUp size={22} />
+              </button>
+
+              <button 
+                onClick={() => setLocation('/messages')}
+                className={getNavButtonClass('/messages')}
+                data-testid="button-messages"
+                title="Messages"
+              >
+                <div className="relative">
+                  <Send size={22} />
+                  {messageData?.count > 0 && (
+                    <Badge 
+                      variant="destructive" 
+                      className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center text-xs p-0 bg-red-500 hover:bg-red-500"
+                    >
+                      {messageData.count > 99 ? '99+' : messageData.count}
+                    </Badge>
+                  )}
+                </div>
               </button>
 
               <button 

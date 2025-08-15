@@ -15,6 +15,13 @@
       "when": 1755232745947,
       "tag": "0001_smart_morlun",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1755251419390,
+      "tag": "0002_lush_carlie_cooper",
+      "breakpoints": true
     }
   ]
 }

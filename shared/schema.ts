@@ -72,6 +72,38 @@ export const mentions = pgTable("mentions", {
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
+export const conversations = pgTable("conversations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  participant1Id: varchar("participant1_id").notNull().references(() => users.id),
+  participant2Id: varchar("participant2_id").notNull().references(() => users.id),
+  lastMessageAt: timestamp("last_message_at").notNull().default(sql`now()`),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
+export const messages = pgTable("messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  conversationId: varchar("conversation_id").notNull().references(() => conversations.id),
+  senderId: varchar("sender_id").notNull().references(() => users.id),
+  encryptedContent: text("encrypted_content").notNull(), // Encrypted message content for recipient
+  encryptedKey: text("encrypted_key").notNull(), // Key encrypted with recipient's public key
+  iv: text("iv").notNull(), // Initialization vector for AES encryption
+  senderEncryptedContent: text("sender_encrypted_content"), // Encrypted message content for sender
+  senderEncryptedKey: text("sender_encrypted_key"), // Key encrypted with sender's public key
+  senderIv: text("sender_iv"), // Initialization vector for sender's copy
+  read: boolean("read").notNull().default(false),
+  readAt: timestamp("read_at"), // When the message was read
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
+export const userKeys = pgTable("user_keys", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id).unique(),
+  publicKey: text("public_key").notNull(), // RSA public key for key exchange
+  encryptedPrivateKey: text("encrypted_private_key").notNull(), // Private key encrypted with user's password
+  keyVersion: integer("key_version").notNull().default(1),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
@@ -96,17 +128,27 @@ export const insertCommentSchema = createInsertSchema(comments).pick({
   content: z.string().min(1, "Comment cannot be empty").max(1000, "Comment must be less than 1000 characters"),
 });
 
+export const insertMessageSchema = z.object({
+  conversationId: z.string().optional(),
+  recipientId: z.string().optional(),
+  content: z.string().min(1, "Message cannot be empty").max(2000, "Message must be less than 2000 characters"),
+});
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type InsertPost = z.infer<typeof insertPostSchema>;
 export type Post = typeof posts.$inferSelect;
 export type InsertComment = z.infer<typeof insertCommentSchema>;
 export type Comment = typeof comments.$inferSelect;
+export type InsertMessage = z.infer<typeof insertMessageSchema>;
 export type Like = typeof likes.$inferSelect;
 export type Follow = typeof follows.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
 export type Bookmark = typeof bookmarks.$inferSelect;
 export type Mention = typeof mentions.$inferSelect;
+export type Conversation = typeof conversations.$inferSelect;
+export type Message = typeof messages.$inferSelect;
+export type UserKeys = typeof userKeys.$inferSelect;
 
 export type UserWithFollowInfo = User & {
   isFollowing: boolean;
@@ -130,4 +172,15 @@ export type PostStats = {
   totalLikes: number;
   totalComments: number;
   engagement: number;
+};
+
+export type ConversationWithParticipant = Conversation & {
+  participant: User;
+  lastMessage?: Message & { sender: User };
+  unreadCount: number;
+};
+
+export type MessageWithSender = Message & {
+  sender: User;
+  decryptedContent?: string;
 };

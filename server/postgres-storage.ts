@@ -1,6 +1,6 @@
-import { type User, type InsertUser, type Post, type InsertPost, type Comment, type InsertComment, type Like, type Follow, type PostWithAuthor, type CommentWithAuthor, type UserWithFollowInfo, type Notification, type Bookmark, type PostStats, type Mention, users, posts, comments, likes, follows, notifications, bookmarks, mentions } from "@shared/schema";
+import { type User, type InsertUser, type Post, type InsertPost, type Comment, type InsertComment, type Like, type Follow, type PostWithAuthor, type CommentWithAuthor, type UserWithFollowInfo, type Notification, type Bookmark, type PostStats, type Mention, type Conversation, type Message, type UserKeys, type ConversationWithParticipant, type MessageWithSender, users, posts, comments, likes, follows, notifications, bookmarks, mentions, conversations, messages, userKeys } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, asc, sql, ilike, ne, count, inArray } from "drizzle-orm";
+import { eq, and, desc, asc, sql, ilike, ne, count, inArray, or } from "drizzle-orm";
 import { IStorage } from "./storage";
 
 export class PostgreSQLStorage implements IStorage {
@@ -667,5 +667,368 @@ export class PostgreSQLStorage implements IStorage {
       .where(inArray(users.username, usernames));
     
     return result;
+  }
+
+  // DM methods
+  async createUserKeys(userId: string, publicKey: string, encryptedPrivateKey: string): Promise<boolean> {
+    try {
+      await db.insert(userKeys).values({
+        userId,
+        publicKey,
+        encryptedPrivateKey,
+        keyVersion: 1
+      });
+      return true;
+    } catch (error) {
+      // User keys already exist or other error
+      return false;
+    }
+  }
+
+  async getUserKeys(userId: string): Promise<UserKeys | undefined> {
+    const result = await db
+      .select()
+      .from(userKeys)
+      .where(eq(userKeys.userId, userId))
+      .limit(1);
+    
+    return result[0];
+  }
+
+  async getUserPublicKey(userId: string): Promise<UserKeys | undefined> {
+    const result = await db
+      .select({
+        id: userKeys.id,
+        userId: userKeys.userId,
+        publicKey: userKeys.publicKey,
+        encryptedPrivateKey: sql<string>`''`.as('encryptedPrivateKey'), // Don't return private key
+        keyVersion: userKeys.keyVersion,
+        createdAt: userKeys.createdAt
+      })
+      .from(userKeys)
+      .where(eq(userKeys.userId, userId))
+      .limit(1);
+    
+    return result[0];
+  }
+
+  async createConversation(participant1Id: string, participant2Id: string): Promise<string> {
+    // Check if conversation already exists
+    const existing = await db
+      .select()
+      .from(conversations)
+      .where(
+        and(
+          sql`(${conversations.participant1Id} = ${participant1Id} AND ${conversations.participant2Id} = ${participant2Id}) OR (${conversations.participant1Id} = ${participant2Id} AND ${conversations.participant2Id} = ${participant1Id})`
+        )
+      )
+      .limit(1);
+
+    if (existing[0]) {
+      return existing[0].id;
+    }
+
+    const result = await db.insert(conversations).values({
+      participant1Id,
+      participant2Id
+    }).returning();
+
+    return result[0].id;
+  }
+
+  async getUserConversations(userId: string): Promise<ConversationWithParticipant[]> {
+    const result = await db
+      .select({
+        id: conversations.id,
+        participant1Id: conversations.participant1Id,
+        participant2Id: conversations.participant2Id,
+        lastMessageAt: conversations.lastMessageAt,
+        createdAt: conversations.createdAt,
+        participantId: sql<string>`CASE WHEN ${conversations.participant1Id} = ${userId} THEN ${conversations.participant2Id} ELSE ${conversations.participant1Id} END`,
+        participantUsername: sql<string>`participant_user.username`,
+        participantBio: sql<string>`participant_user.bio`,
+        participantIsAI: sql<boolean>`participant_user.is_ai`,
+        participantCreatedAt: sql<Date>`participant_user.created_at`
+      })
+      .from(conversations)
+      .leftJoin(
+        sql`${users} as participant_user`,
+        sql`participant_user.id = CASE WHEN ${conversations.participant1Id} = ${userId} THEN ${conversations.participant2Id} ELSE ${conversations.participant1Id} END`
+      )
+      .where(
+        sql`${conversations.participant1Id} = ${userId} OR ${conversations.participant2Id} = ${userId}`
+      )
+      .orderBy(desc(conversations.lastMessageAt));
+
+    const conversationsWithParticipants: ConversationWithParticipant[] = [];
+
+    for (const row of result) {
+      const participant: User = {
+        id: row.participantId,
+        username: row.participantUsername,
+        password: '', // Never return password
+        bio: row.participantBio,
+        isAI: row.participantIsAI,
+        createdAt: row.participantCreatedAt
+      };
+
+      // Get last message
+      const lastMessageResult = await db
+        .select({
+          id: messages.id,
+          conversationId: messages.conversationId,
+          senderId: messages.senderId,
+          encryptedContent: messages.encryptedContent,
+          encryptedKey: messages.encryptedKey,
+          iv: messages.iv,
+          senderEncryptedContent: messages.senderEncryptedContent,
+          senderEncryptedKey: messages.senderEncryptedKey,
+          senderIv: messages.senderIv,
+          read: messages.read,
+          readAt: messages.readAt,
+          createdAt: messages.createdAt,
+          senderUsername: users.username,
+          senderBio: users.bio,
+          senderIsAI: users.isAI,
+          senderCreatedAt: users.createdAt
+        })
+        .from(messages)
+        .leftJoin(users, eq(messages.senderId, users.id))
+        .where(eq(messages.conversationId, row.id))
+        .orderBy(desc(messages.createdAt))
+        .limit(1);
+
+      const lastMessage = lastMessageResult[0] ? {
+        ...lastMessageResult[0],
+        sender: {
+          id: lastMessageResult[0].senderId,
+          username: lastMessageResult[0].senderUsername || '',
+          password: '',
+          bio: lastMessageResult[0].senderBio || '',
+          isAI: lastMessageResult[0].senderIsAI || false,
+          createdAt: lastMessageResult[0].senderCreatedAt || new Date()
+        }
+      } : undefined;
+
+      // Count unread messages
+      const unreadCountResult = await db
+        .select({ count: count() })
+        .from(messages)
+        .where(
+          and(
+            eq(messages.conversationId, row.id),
+            ne(messages.senderId, userId),
+            eq(messages.read, false)
+          )
+        );
+
+      const unreadCount = unreadCountResult[0]?.count || 0;
+
+      conversationsWithParticipants.push({
+        id: row.id,
+        participant1Id: row.participant1Id,
+        participant2Id: row.participant2Id,
+        lastMessageAt: row.lastMessageAt,
+        createdAt: row.createdAt,
+        participant,
+        lastMessage,
+        unreadCount: Number(unreadCount)
+      });
+    }
+
+    return conversationsWithParticipants;
+  }
+
+  async getConversationParticipants(conversationId: string): Promise<User[]> {
+    const conversation = await db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.id, conversationId))
+      .limit(1);
+
+    if (!conversation[0]) return [];
+
+    const participants = await db
+      .select()
+      .from(users)
+      .where(
+        sql`${users.id} IN (${conversation[0].participant1Id}, ${conversation[0].participant2Id})`
+      );
+
+    return participants;
+  }
+
+  async isConversationParticipant(conversationId: string, userId: string): Promise<boolean> {
+    const result = await db
+      .select({ count: count() })
+      .from(conversations)
+      .where(
+        and(
+          eq(conversations.id, conversationId),
+          sql`${conversations.participant1Id} = ${userId} OR ${conversations.participant2Id} = ${userId}`
+        )
+      );
+
+    return Number(result[0]?.count || 0) > 0;
+  }
+
+  async createMessage(
+    conversationId: string,
+    senderId: string,
+    encryptedContent: string,
+    encryptedKey: string,
+    iv: string,
+    senderEncryptedContent?: string,
+    senderEncryptedKey?: string,
+    senderIv?: string
+  ): Promise<MessageWithSender> {
+    const result = await db.insert(messages).values({
+      conversationId,
+      senderId,
+      encryptedContent,
+      encryptedKey,
+      iv,
+      senderEncryptedContent,
+      senderEncryptedKey,
+      senderIv
+    }).returning();
+
+    // Update conversation's last message time
+    await db
+      .update(conversations)
+      .set({ lastMessageAt: new Date() })
+      .where(eq(conversations.id, conversationId));
+
+    const sender = await this.getUser(senderId);
+    
+    return {
+      ...result[0],
+      sender: sender!
+    };
+  }
+
+  async getConversationMessages(conversationId: string, page: number, limit: number): Promise<MessageWithSender[]> {
+    const offset = (page - 1) * limit;
+    
+    const result = await db
+      .select({
+        id: messages.id,
+        conversationId: messages.conversationId,
+        senderId: messages.senderId,
+        encryptedContent: messages.encryptedContent,
+        encryptedKey: messages.encryptedKey,
+        iv: messages.iv,
+        senderEncryptedContent: messages.senderEncryptedContent,
+        senderEncryptedKey: messages.senderEncryptedKey,
+        senderIv: messages.senderIv,
+        read: messages.read,
+        readAt: messages.readAt,
+        createdAt: messages.createdAt,
+        senderUsername: users.username,
+        senderBio: users.bio,
+        senderIsAI: users.isAI,
+        senderCreatedAt: users.createdAt
+      })
+      .from(messages)
+      .leftJoin(users, eq(messages.senderId, users.id))
+      .where(eq(messages.conversationId, conversationId))
+      .orderBy(desc(messages.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    return result.map(row => ({
+      id: row.id,
+      conversationId: row.conversationId,
+      senderId: row.senderId,
+      encryptedContent: row.encryptedContent,
+      encryptedKey: row.encryptedKey,
+      iv: row.iv,
+      senderEncryptedContent: row.senderEncryptedContent,
+      senderEncryptedKey: row.senderEncryptedKey,
+      senderIv: row.senderIv,
+      read: row.read,
+      readAt: row.readAt,
+      createdAt: row.createdAt,
+      sender: {
+        id: row.senderId,
+        username: row.senderUsername || '',
+        password: '',
+        bio: row.senderBio || '',
+        isAI: row.senderIsAI || false,
+        createdAt: row.senderCreatedAt || new Date()
+      }
+    })).reverse(); // Return in chronological order
+  }
+
+  async markMessagesAsRead(conversationId: string, userId: string): Promise<void> {
+    await db
+      .update(messages)
+      .set({ read: true })
+      .where(
+        and(
+          eq(messages.conversationId, conversationId),
+          ne(messages.senderId, userId),
+          eq(messages.read, false)
+        )
+      );
+  }
+
+  async searchUsersForDM(query: string, currentUserId: string): Promise<User[]> {
+    const result = await db
+      .select()
+      .from(users)
+      .where(
+        and(
+          ne(users.id, currentUserId),
+          ilike(users.username, `%${query}%`)
+        )
+      )
+      .limit(10);
+
+    return result;
+  }
+
+  async getUnreadMessageCount(userId: string): Promise<number> {
+    const result = await db
+      .select({ count: sql`count(*)` })
+      .from(messages)
+      .innerJoin(conversations, eq(messages.conversationId, conversations.id))
+      .where(
+        and(
+          or(
+            eq(conversations.participant1Id, userId),
+            eq(conversations.participant2Id, userId)
+          ),
+          ne(messages.senderId, userId),
+          eq(messages.read, false)
+        )
+      );
+
+    return Number(result[0]?.count || 0);
+  }
+
+  async markMessageAsSeen(messageId: string): Promise<void> {
+    await db
+      .update(messages)
+      .set({ 
+        read: true,
+        readAt: sql`now()`
+      })
+      .where(eq(messages.id, messageId));
+  }
+
+  async markConversationMessagesAsSeen(conversationId: string, userId: string): Promise<void> {
+    await db
+      .update(messages)
+      .set({ 
+        read: true,
+        readAt: sql`now()`
+      })
+      .where(
+        and(
+          eq(messages.conversationId, conversationId),
+          ne(messages.senderId, userId)
+        )
+      );
   }
 }

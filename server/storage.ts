@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type Post, type InsertPost, type Comment, type InsertComment, type Like, type Follow, type PostWithAuthor, type CommentWithAuthor, type UserWithFollowInfo, type Notification, type Bookmark, type PostStats, type Mention } from "@shared/schema";
+import { type User, type InsertUser, type Post, type InsertPost, type Comment, type InsertComment, type Like, type Follow, type PostWithAuthor, type CommentWithAuthor, type UserWithFollowInfo, type Notification, type Bookmark, type PostStats, type Mention, type Conversation, type Message, type UserKeys, type ConversationWithParticipant, type MessageWithSender } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -54,6 +54,31 @@ export interface IStorage {
   // Mention methods
   createMention(mentionedUserId: string, mentionedByUserId: string, postId?: string, commentId?: string): Promise<Mention>;
   getUsersByUsernames(usernames: string[]): Promise<User[]>;
+  
+  // DM methods
+  createUserKeys(userId: string, publicKey: string, encryptedPrivateKey: string): Promise<boolean>;
+  getUserKeys(userId: string): Promise<UserKeys | undefined>;
+  getUserPublicKey(userId: string): Promise<UserKeys | undefined>;
+  createConversation(participant1Id: string, participant2Id: string): Promise<string>;
+  getUserConversations(userId: string): Promise<ConversationWithParticipant[]>;
+  getConversationParticipants(conversationId: string): Promise<User[]>;
+  isConversationParticipant(conversationId: string, userId: string): Promise<boolean>;
+  createMessage(
+    conversationId: string, 
+    senderId: string, 
+    encryptedContent: string, 
+    encryptedKey: string, 
+    iv: string,
+    senderEncryptedContent?: string,
+    senderEncryptedKey?: string,
+    senderIv?: string
+  ): Promise<MessageWithSender>;
+  getConversationMessages(conversationId: string, page: number, limit: number): Promise<MessageWithSender[]>;
+  markMessagesAsRead(conversationId: string, userId: string): Promise<void>;
+  searchUsersForDM(query: string, currentUserId: string): Promise<User[]>;
+  getUnreadMessageCount(userId: string): Promise<number>;
+  markMessageAsSeen(messageId: string): Promise<void>;
+  markConversationMessagesAsSeen(conversationId: string, userId: string): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
@@ -65,6 +90,9 @@ export class MemStorage implements IStorage {
   private notifications: Map<string, Notification>;
   private bookmarks: Map<string, Bookmark>;
   private mentions: Map<string, Mention>;
+  private conversations: Map<string, Conversation>;
+  private messages: Map<string, Message>;
+  private userKeys: Map<string, UserKeys>;
 
   constructor() {
     this.users = new Map();
@@ -75,6 +103,9 @@ export class MemStorage implements IStorage {
     this.notifications = new Map();
     this.bookmarks = new Map();
     this.mentions = new Map();
+    this.conversations = new Map();
+    this.messages = new Map();
+    this.userKeys = new Map();
   }
 
   async getUser(id: string): Promise<User | undefined> {
@@ -605,6 +636,230 @@ export class MemStorage implements IStorage {
       }
     });
     return users;
+  }
+
+  // DM methods
+  async createUserKeys(userId: string, publicKey: string, encryptedPrivateKey: string): Promise<boolean> {
+    if (this.userKeys.has(userId)) {
+      return false; // Keys already exist
+    }
+    
+    const userKey: UserKeys = {
+      id: randomUUID(),
+      userId,
+      publicKey,
+      encryptedPrivateKey,
+      keyVersion: 1,
+      createdAt: new Date()
+    };
+    
+    this.userKeys.set(userId, userKey);
+    return true;
+  }
+
+  async getUserKeys(userId: string): Promise<UserKeys | undefined> {
+    return this.userKeys.get(userId);
+  }
+
+  async getUserPublicKey(userId: string): Promise<UserKeys | undefined> {
+    return this.userKeys.get(userId);
+  }
+
+  async createConversation(participant1Id: string, participant2Id: string): Promise<string> {
+    // Check if conversation already exists
+    const existingConversation = Array.from(this.conversations.values()).find(conv => 
+      (conv.participant1Id === participant1Id && conv.participant2Id === participant2Id) ||
+      (conv.participant1Id === participant2Id && conv.participant2Id === participant1Id)
+    );
+
+    if (existingConversation) {
+      return existingConversation.id;
+    }
+
+    const conversation: Conversation = {
+      id: randomUUID(),
+      participant1Id,
+      participant2Id,
+      lastMessageAt: new Date(),
+      createdAt: new Date()
+    };
+
+    this.conversations.set(conversation.id, conversation);
+    return conversation.id;
+  }
+
+  async getUserConversations(userId: string): Promise<ConversationWithParticipant[]> {
+    const userConversations = Array.from(this.conversations.values())
+      .filter(conv => conv.participant1Id === userId || conv.participant2Id === userId)
+      .sort((a, b) => b.lastMessageAt.getTime() - a.lastMessageAt.getTime());
+
+    const result: ConversationWithParticipant[] = [];
+
+    for (const conv of userConversations) {
+      const participantId = conv.participant1Id === userId ? conv.participant2Id : conv.participant1Id;
+      const participant = await this.getUser(participantId);
+      
+      if (!participant) continue;
+
+      // Get last message
+      const messages = Array.from(this.messages.values())
+        .filter(msg => msg.conversationId === conv.id)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      
+      const lastMessage = messages[0];
+      const lastMessageWithSender = lastMessage ? {
+        ...lastMessage,
+        sender: await this.getUser(lastMessage.senderId) || participant
+      } : undefined;
+
+      // Count unread messages
+      const unreadCount = messages.filter(msg => 
+        msg.senderId !== userId && !msg.read
+      ).length;
+
+      result.push({
+        ...conv,
+        participant,
+        lastMessage: lastMessageWithSender,
+        unreadCount
+      });
+    }
+
+    return result;
+  }
+
+  async getConversationParticipants(conversationId: string): Promise<User[]> {
+    const conversation = this.conversations.get(conversationId);
+    if (!conversation) return [];
+
+    const participants: User[] = [];
+    const participant1 = await this.getUser(conversation.participant1Id);
+    const participant2 = await this.getUser(conversation.participant2Id);
+
+    if (participant1) participants.push(participant1);
+    if (participant2) participants.push(participant2);
+
+    return participants;
+  }
+
+  async isConversationParticipant(conversationId: string, userId: string): Promise<boolean> {
+    const conversation = this.conversations.get(conversationId);
+    return conversation ? 
+      (conversation.participant1Id === userId || conversation.participant2Id === userId) : 
+      false;
+  }
+
+  async createMessage(
+    conversationId: string, 
+    senderId: string, 
+    encryptedContent: string, 
+    encryptedKey: string, 
+    iv: string,
+    senderEncryptedContent?: string,
+    senderEncryptedKey?: string,
+    senderIv?: string
+  ): Promise<MessageWithSender> {
+    const message: Message = {
+      id: randomUUID(),
+      conversationId,
+      senderId,
+      encryptedContent,
+      encryptedKey,
+      iv,
+      senderEncryptedContent: senderEncryptedContent || null,
+      senderEncryptedKey: senderEncryptedKey || null,
+      senderIv: senderIv || null,
+      read: false,
+      readAt: null,
+      createdAt: new Date()
+    };
+
+    this.messages.set(message.id, message);
+
+    // Update conversation's last message time
+    const conversation = this.conversations.get(conversationId);
+    if (conversation) {
+      conversation.lastMessageAt = new Date();
+      this.conversations.set(conversationId, conversation);
+    }
+
+    const sender = await this.getUser(senderId);
+    return {
+      ...message,
+      sender: sender!
+    };
+  }
+
+  async getConversationMessages(conversationId: string, page: number, limit: number): Promise<MessageWithSender[]> {
+    const offset = (page - 1) * limit;
+    const messages = Array.from(this.messages.values())
+      .filter(msg => msg.conversationId === conversationId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(offset, offset + limit);
+
+    const messagesWithSenders: MessageWithSender[] = [];
+    for (const message of messages) {
+      const sender = await this.getUser(message.senderId);
+      if (sender) {
+        messagesWithSenders.push({
+          ...message,
+          sender
+        });
+      }
+    }
+
+    return messagesWithSenders.reverse(); // Return in chronological order
+  }
+
+  async markMessagesAsRead(conversationId: string, userId: string): Promise<void> {
+    Array.from(this.messages.values())
+      .filter(msg => msg.conversationId === conversationId && msg.senderId !== userId)
+      .forEach(msg => {
+        msg.read = true;
+        this.messages.set(msg.id, msg);
+      });
+  }
+
+  async searchUsersForDM(query: string, currentUserId: string): Promise<User[]> {
+    return Array.from(this.users.values())
+      .filter(user => 
+        user.id !== currentUserId && 
+        user.username.toLowerCase().includes(query.toLowerCase())
+      )
+      .slice(0, 10);
+  }
+
+  async getUnreadMessageCount(userId: string): Promise<number> {
+    return Array.from(this.messages.values())
+      .filter(message => {
+        const conversation = this.conversations.get(message.conversationId);
+        if (!conversation) return false;
+        
+        const isParticipant = conversation.participant1Id === userId || conversation.participant2Id === userId;
+        const isNotSender = message.senderId !== userId;
+        const isUnread = !message.read;
+        
+        return isParticipant && isNotSender && isUnread;
+      }).length;
+  }
+
+  async markMessageAsSeen(messageId: string): Promise<void> {
+    const message = this.messages.get(messageId);
+    if (message) {
+      message.read = true;
+      message.readAt = new Date();
+      this.messages.set(messageId, message);
+    }
+  }
+
+  async markConversationMessagesAsSeen(conversationId: string, userId: string): Promise<void> {
+    Array.from(this.messages.entries()).forEach(([messageId, message]) => {
+      if (message.conversationId === conversationId && message.senderId !== userId) {
+        message.read = true;
+        message.readAt = new Date();
+        this.messages.set(messageId, message);
+      }
+    });
   }
 }
 
