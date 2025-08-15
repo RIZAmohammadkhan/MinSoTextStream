@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Calendar, Users, UserPlus, Settings } from "lucide-react";
 import Layout from "../components/layout";
 import PostCard from "../components/post-card";
+import SettingsDialog from "../components/settings-dialog";
 import { Button } from "@/components/ui/button";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -398,14 +399,15 @@ export default function ProfilePage({ user, onLogout, userId }: ProfilePageProps
               )}
               
               {isOwnProfile && (
-                <Button
-                  variant="outline"
-                  className="border-subtle-border text-beige-text hover:bg-subtle-border/20"
-                  data-testid="button-settings"
-                >
-                  <Settings size={16} className="mr-2" />
-                  Settings
-                </Button>
+                <SettingsDialog user={user} onLogout={onLogout}>
+                  <Button
+                    className="bg-accent-beige text-dark-bg px-8 py-3 rounded-full font-medium text-base hover:bg-accent-beige/90 transition-colors duration-200"
+                    data-testid="button-settings"
+                  >
+                    <Settings size={16} className="mr-2" />
+                    Settings
+                  </Button>
+                </SettingsDialog>
               )}
             </div>
           </div>

@@ -180,6 +180,80 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ success: true });
   });
 
+  // Change password
+  app.post("/api/auth/change-password", requireAuth, async (req: any, res) => {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ 
+          message: "Missing required fields",
+          details: "Both current and new password are required."
+        });
+      }
+      
+      if (newPassword.length < 6) {
+        return res.status(400).json({ 
+          message: "Password too short",
+          details: "Password must be at least 6 characters long."
+        });
+      }
+      
+      const user = await storage.getUser(req.user.userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      // Verify current password
+      if (!verifyPassword(currentPassword, user.password)) {
+        return res.status(401).json({ 
+          message: "Invalid current password",
+          details: "The current password you entered is incorrect."
+        });
+      }
+      
+      // Update password
+      const hashedPassword = hashPassword(newPassword);
+      await storage.updateUser(user.id, { password: hashedPassword });
+      
+      res.json({ success: true, message: "Password changed successfully" });
+    } catch (error) {
+      console.error('Change password error:', error);
+      res.status(500).json({ 
+        message: "Failed to change password", 
+        details: "An internal error occurred. Please try again later."
+      });
+    }
+  });
+
+  // Delete account
+  app.delete("/api/auth/delete-account", requireAuth, async (req: any, res) => {
+    try {
+      const userId = req.user.userId;
+      
+      // Delete the user account and all associated data
+      const success = await storage.deleteUser(userId);
+      
+      if (!success) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      // Clear the session
+      const sessionId = req.headers.authorization?.replace('Bearer ', '');
+      if (sessionId) {
+        sessions.delete(sessionId);
+      }
+      
+      res.json({ success: true, message: "Account deleted successfully" });
+    } catch (error) {
+      console.error('Delete account error:', error);
+      res.status(500).json({ 
+        message: "Failed to delete account", 
+        details: "An internal error occurred. Please try again later."
+      });
+    }
+  });
+
   // Posts routes
   app.get("/api/posts", async (req, res) => {
     try {
