@@ -130,7 +130,7 @@ export default function ProfilePage({ user, onLogout, userId }: ProfilePageProps
       queryClient.invalidateQueries({ queryKey: ['/api/users', profileUserId] });
       queryClient.invalidateQueries({ queryKey: ['/api/users', profileUserId, 'followers'] });
       queryClient.invalidateQueries({ queryKey: ['/api/users', user.id, 'following'] });
-      notifications.success("Success", profileUser?.isFollowing ? "Unfollowed user" : "Now following user");
+      // Follow button state changes immediately - no toast needed
     },
     onError: (error: any) => {
       notifications.error("Error", error.message || "Failed to toggle follow");

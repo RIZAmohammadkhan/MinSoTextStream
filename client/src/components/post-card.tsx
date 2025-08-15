@@ -77,7 +77,7 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user, showComme
       queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
       queryClient.invalidateQueries({ queryKey: ['/api/bookmarks'] });
       queryClient.invalidateQueries({ queryKey: ['trending-posts'] });
-      notifications.success("Success", "Post deleted successfully");
+      // Post disappears from UI - no toast needed
     },
     onError: (error: any) => {
       notifications.error("Error", error.message || "Failed to delete post");
@@ -126,7 +126,7 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user, showComme
           url: postUrl,
         });
         
-        notifications.success("Post Shared", "Post shared successfully!");
+        // Share completed successfully - no toast needed since native UI handles it
         return;
       } catch (error) {
         // User cancelled or share failed, fall back to clipboard
@@ -137,6 +137,7 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user, showComme
     // Fallback: Copy only the URL to clipboard (like modern social media)
     try {
       await navigator.clipboard.writeText(postUrl);
+      // Brief feedback - keeping this one as copy actions benefit from confirmation
       notifications.success("Link Copied", "Post link copied to clipboard!");
     } catch (error) {
       notifications.error("Share Failed", "Unable to copy link. Please copy the URL manually.");

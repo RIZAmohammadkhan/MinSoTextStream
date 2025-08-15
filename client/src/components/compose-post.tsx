@@ -29,10 +29,7 @@ export default function ComposePost({ user }: ComposePostProps) {
       setTimeout(() => setIsSuccess(false), 2000);
       
       queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
-      notifications.success(
-        "Post created",
-        "Your thoughts have been shared with the community."
-      );
+      // Visual feedback is provided by the success animation - no toast needed
     },
     onError: (error: any) => {
       notifications.error(
@@ -57,26 +54,22 @@ export default function ComposePost({ user }: ComposePostProps) {
       initial={{ opacity: 0, y: 20 }}
       animate={{ 
         opacity: 1, 
-        y: 0,
-        scale: isSuccess ? 1.02 : 1,
-        borderColor: isSuccess ? "#10B981" : undefined
+        y: 0
       }}
       transition={{ 
-        duration: 0.5,
-        scale: { duration: 0.3 },
-        borderColor: { duration: 0.3 }
+        duration: 0.5
       }}
     >
       <AnimatePresence>
         {isSuccess && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.8 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             transition={{ duration: 0.3 }}
-            className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded-lg text-green-400 text-center"
+            className="mb-4 p-2 text-beige-text/60 text-center text-sm"
           >
-            ✨ Post created successfully!
+            Posted
           </motion.div>
         )}
       </AnimatePresence>

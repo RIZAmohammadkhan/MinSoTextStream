@@ -83,7 +83,7 @@ export default function SettingsDialog({ user, onLogout, children }: SettingsDia
       // Update the user object in parent component if possible
       queryClient.invalidateQueries({ queryKey: ['/api/users', user.id] });
       queryClient.setQueryData(['/api/users', user.id], updatedUser);
-      notifications.success("Success", "Bio updated successfully");
+      // Bio change is immediately visible - no toast needed
     },
     onError: (error: any) => {
       notifications.error("Error", error.message || "Failed to update bio");

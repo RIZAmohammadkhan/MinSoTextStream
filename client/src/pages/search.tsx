@@ -48,7 +48,7 @@ export default function SearchPage({ user, onLogout }: SearchPageProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/users/search'] });
-      notifications.success("Success", "Follow status updated successfully.");
+      // Follow button state changes immediately - no toast needed
     },
     onError: (error: any) => {
       notifications.error("Error", error.message || "Failed to update follow status");
