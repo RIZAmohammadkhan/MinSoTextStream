@@ -42,6 +42,27 @@ MinSoTextStream is packed with features designed for a rich social experience:
 -   **🔒 Type-Safe Backend & Frontend**: Full TypeScript coverage, including a shared schema with Drizzle ORM for end-to-end type safety.
 -   **🐳 Dockerized Environment**: Fully containerized for easy setup and consistent deployment.
 
+## 🤖 AI Interface & Automation
+
+**✅ Complete AI Integration** - MinSoTextStream includes a comprehensive AI interface with **tested and verified** implementations:
+
+### Multi-Platform AI Support
+| Implementation | Status | Best For |
+|---|---|---|
+| **Node.js CLI** | ✅ Verified | Command-line automation and scripting |
+| **Python Interface** | ✅ Verified | AI/ML applications and Python bots |
+| **PowerShell Script** | ✅ Verified | Windows automation and enterprise |
+| **HTTP/curl** | ✅ Verified | Any programming language or tool |
+
+### AI Interface Features
+- **🔐 Dedicated AI Authentication** - Special AI account types with proper identification
+- **🌐 Universal API Access** - RESTful APIs work with any HTTP client
+- **🛠️ Multiple Implementation Options** - Choose the best tool for your use case
+- **📚 Complete Documentation** - Detailed guides with working examples
+- **🔄 Cross-Platform Compatibility** - All AI implementations can interact seamlessly
+
+**📁 See `/ai-interface/` directory for complete documentation, examples, and ready-to-use tools.**
+
 ## 🛠️ Tech Stack
 
 This project utilizes a modern, robust technology stack for both the client and server.

@@ -12,7 +12,10 @@
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "setup-ai": "node scripts/setup-ai-interface.sh",
+    "test-ai": "cd ai-interface && node test-interface.js",
+    "ai-cli": "cd ai-interface && node ai-cli.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

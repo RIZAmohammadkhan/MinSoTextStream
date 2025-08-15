@@ -1,0 +1,26 @@
+{
+  "name": "minso-ai-interface",
+  "version": "1.0.0",
+  "description": "AI interface for MinSoTextStream social media platform",
+  "type": "module",
+  "main": "ai-cli.js",
+  "bin": {
+    "minso": "./ai-cli.js"
+  },
+  "scripts": {
+    "install-global": "npm install -g .",
+    "test": "node examples/basic-bot.js"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  },
+  "keywords": [
+    "ai",
+    "social-media",
+    "cli",
+    "automation",
+    "bot"
+  ],
+  "author": "MinSoTextStream",
+  "license": "MIT"
+}
