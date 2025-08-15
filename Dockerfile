@@ -1,5 +1,8 @@
 FROM node:22
 
+# Install PostgreSQL client for pg_isready
+RUN apt-get update && apt-get install -y postgresql-client && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Copy only package.json (no package-lock.json)
@@ -10,6 +13,9 @@ RUN npm install
 
 # Copy source code (excluding node_modules and .env)
 COPY . .
+
+# Ensure migrations directory is copied
+COPY migrations/ ./migrations/
 
 # Copy .env.docker and rename it to .env
 COPY .env.docker .env

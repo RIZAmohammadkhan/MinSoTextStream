@@ -40,6 +40,9 @@ services:
     networks:
       - social-media-network
     restart: unless-stopped
+    # Uncomment the following volumes section for development if you want to mount migrations
+    # volumes:
+    #   - ./migrations:/app/migrations:ro
 
 volumes:
   postgres_data:

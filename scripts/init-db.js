@@ -18,6 +18,22 @@ if (!databaseUrl) {
   process.exit(1);
 }
 
+async function waitForDatabase(pool, maxAttempts = 10) {
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      await pool.query('SELECT 1');
+      console.log("Database connection successful!");
+      return;
+    } catch (error) {
+      console.log(`Database connection attempt ${i + 1}/${maxAttempts} failed:`, error.message);
+      if (i === maxAttempts - 1) {
+        throw error;
+      }
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+  }
+}
+
 async function initializeDatabase() {
   console.log("Connecting to database...");
   console.log("Database URL:", databaseUrl.replace(/:[^:]*@/, ':***@')); // Hide password in logs
@@ -26,10 +42,20 @@ async function initializeDatabase() {
   
   try {
     // Create a connection pool
-    pool = new Pool({ connectionString: databaseUrl });
+    pool = new Pool({ 
+      connectionString: databaseUrl,
+      max: 20,
+      connectionTimeoutMillis: 30000,
+      idleTimeoutMillis: 30000,
+    });
+    
+    // Wait for database to be ready
+    await waitForDatabase(pool);
+    
     const db = drizzle(pool);
     
     console.log("Running database migrations...");
+    console.log("Migrations folder:", path.join(process.cwd(), "migrations"));
     
     // Run migrations
     await migrate(db, {
