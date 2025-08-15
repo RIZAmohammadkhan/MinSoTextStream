@@ -1,8 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { motion, AnimatePresence } from "framer-motion";
-import { staggerContainer, staggerItem } from "@/components/page-transition";
 import Layout from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,8 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { MessageCircle, Plus, Send, Search, ArrowLeft, User, Lock, Shield, Check, CheckCheck, Circle, Eye } from "lucide-react";
-import { clientCrypto } from "@shared/encryption-utils";
+import { MessageCircle, Plus, Send, Search, ArrowLeft, Shield, Eye } from "lucide-react";
 import { toast } from "sonner";
 
 interface User {
@@ -26,12 +23,9 @@ interface ConversationWithParticipant {
   participant: User;
   lastMessage?: {
     id: string;
-    encryptedContent: string;
-    encryptedKey: string;
-    iv: string;
+    content: string; // Already decrypted by server
     sender: User;
     createdAt: string;
-    decryptedContent?: string;
   };
   unreadCount: number;
   lastMessageAt: string;
@@ -41,14 +35,11 @@ interface MessageWithSender {
   id: string;
   conversationId: string;
   senderId: string;
-  encryptedContent: string;
-  encryptedKey: string;
-  iv: string;
+  content: string; // Already decrypted by server
   read: boolean;
   readAt?: string;
   createdAt: string;
   sender: User;
-  decryptedContent?: string;
 }
 
 interface MessagesPageProps {
@@ -63,7 +54,6 @@ export default function MessagesPage({ user, onLogout }: MessagesPageProps) {
   const [showNewConversation, setShowNewConversation] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [userKeys, setUserKeys] = useState<any>(null);
   const queryClient = useQueryClient();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -106,86 +96,6 @@ export default function MessagesPage({ user, onLogout }: MessagesPageProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // Fetch user's encryption keys
-  const { data: keysData } = useQuery({
-    queryKey: ['/api/dm/keys'],
-    queryFn: async () => {
-      const sessionId = localStorage.getItem('minso_session');
-      const response = await fetch('/api/dm/keys', {
-        headers: {
-          'Authorization': `Bearer ${sessionId}`
-        }
-      });
-      if (!response.ok) {
-        if (response.status === 404) {
-          return null; // No keys yet
-        }
-        throw new Error('Failed to fetch user keys');
-      }
-      return response.json();
-    }
-  });
-
-  // Generate keys if user doesn't have them
-  useEffect(() => {
-    const setupKeys = async () => {
-      if (keysData === null && !userKeys) {
-        // User doesn't have keys, generate them
-        try {
-          console.log('Generating new encryption keys...');
-          const keyPair = await clientCrypto.generateKeyPair();
-          
-          // For demo purposes, we'll use a simple encryption of private key
-          // In production, this should be properly encrypted with user's password
-          const encryptedPrivateKey = btoa(keyPair.privateKey);
-          
-          const sessionId = localStorage.getItem('minso_session');
-          const response = await fetch('/api/dm/keys', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${sessionId}`
-            },
-            body: JSON.stringify({
-              publicKey: keyPair.publicKey,
-              encryptedPrivateKey
-            })
-          });
-
-          if (response.ok) {
-            setUserKeys({ ...keyPair, encryptedPrivateKey });
-            toast.success('Encryption keys generated successfully');
-            queryClient.invalidateQueries({ queryKey: ['/api/dm/keys'] });
-          } else {
-            const errorData = await response.json();
-            if (response.status === 409) {
-              // Keys already exist, fetch them
-              console.log('Keys already exist, fetching...');
-              queryClient.invalidateQueries({ queryKey: ['/api/dm/keys'] });
-            } else {
-              throw new Error(errorData.message || 'Failed to create keys');
-            }
-          }
-        } catch (error) {
-          console.error('Failed to generate keys:', error);
-          toast.error('Failed to set up encryption. You may need to refresh the page.');
-        }
-      } else if (keysData) {
-        // User has keys, decrypt private key
-        try {
-          const privateKey = atob(keysData.encryptedPrivateKey);
-          setUserKeys({ ...keysData, privateKey });
-          console.log('Encryption keys loaded successfully');
-        } catch (error) {
-          console.error('Failed to decrypt private key:', error);
-          toast.error('Failed to load encryption keys');
-        }
-      }
-    };
-
-    setupKeys();
-  }, [keysData, userKeys, queryClient]);
-
   // Fetch conversations
   const { data: conversations = [] } = useQuery({
     queryKey: ['/api/dm/conversations'],
@@ -197,52 +107,8 @@ export default function MessagesPage({ user, onLogout }: MessagesPageProps) {
         }
       });
       if (!response.ok) throw new Error('Failed to fetch conversations');
-      const data = await response.json();
-      
-      // Decrypt last messages using the correct encrypted version
-      if (userKeys?.privateKey) {
-        for (const conv of data) {
-          if (conv.lastMessage) {
-            try {
-              // Use sender's encrypted version if this is our message, otherwise use recipient's version
-              if (conv.lastMessage.senderId === user.id) {
-                // This is our message, try sender's encrypted data first
-                if (conv.lastMessage.senderEncryptedContent && conv.lastMessage.senderEncryptedKey && conv.lastMessage.senderIv) {
-                  conv.lastMessage.decryptedContent = await clientCrypto.decryptMessage(
-                    conv.lastMessage.senderEncryptedContent,
-                    conv.lastMessage.senderEncryptedKey,
-                    conv.lastMessage.senderIv,
-                    userKeys.privateKey
-                  );
-                } else {
-                  // Fallback to recipient's version
-                  conv.lastMessage.decryptedContent = await clientCrypto.decryptMessage(
-                    conv.lastMessage.encryptedContent,
-                    conv.lastMessage.encryptedKey,
-                    conv.lastMessage.iv,
-                    userKeys.privateKey
-                  );
-                }
-              } else {
-                // This is a received message, use recipient's encrypted data
-                conv.lastMessage.decryptedContent = await clientCrypto.decryptMessage(
-                  conv.lastMessage.encryptedContent,
-                  conv.lastMessage.encryptedKey,
-                  conv.lastMessage.iv,
-                  userKeys.privateKey
-                );
-              }
-            } catch (error) {
-              console.error('Failed to decrypt last message:', error);
-              conv.lastMessage.decryptedContent = '[Encrypted message]';
-            }
-          }
-        }
-      }
-      
-      return data;
+      return response.json(); // Messages are already decrypted by the server
     },
-    enabled: !!userKeys,
     refetchInterval: 5000
   });
 
@@ -259,49 +125,9 @@ export default function MessagesPage({ user, onLogout }: MessagesPageProps) {
         }
       });
       if (!response.ok) throw new Error('Failed to fetch messages');
-      const data = await response.json();
-      
-      // Decrypt messages using the appropriate encrypted version
-      if (userKeys?.privateKey) {
-        for (const message of data) {
-          try {
-            if (message.senderId === user.id) {
-              // For our own messages, try to decrypt the sender version first
-              if (message.senderEncryptedContent && message.senderEncryptedKey && message.senderIv) {
-                message.decryptedContent = await clientCrypto.decryptMessage(
-                  message.senderEncryptedContent,
-                  message.senderEncryptedKey,
-                  message.senderIv,
-                  userKeys.privateKey
-                );
-              } else {
-                // Fallback to recipient version (for older messages)
-                message.decryptedContent = await clientCrypto.decryptMessage(
-                  message.encryptedContent,
-                  message.encryptedKey,
-                  message.iv,
-                  userKeys.privateKey
-                );
-              }
-            } else {
-              // For received messages, use the recipient version
-              message.decryptedContent = await clientCrypto.decryptMessage(
-                message.encryptedContent,
-                message.encryptedKey,
-                message.iv,
-                userKeys.privateKey
-              );
-            }
-          } catch (error) {
-            console.error('Failed to decrypt message:', error);
-            message.decryptedContent = '[Unable to decrypt message]';
-          }
-        }
-      }
-      
-      return data;
+      return response.json(); // Messages are already decrypted by the server
     },
-    enabled: !!selectedConversation && !!userKeys,
+    enabled: !!selectedConversation,
     refetchInterval: 2000
   });
 
@@ -360,45 +186,12 @@ export default function MessagesPage({ user, onLogout }: MessagesPageProps) {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
   const sendMessageMutation = useMutation({
     mutationFn: async ({ conversationId, recipientId, content }: { conversationId?: string; recipientId?: string; content: string }) => {
-      if (!userKeys) throw new Error('Encryption keys not available');
-      
-      // Get recipient's public key
-      const recipientIdToUse = recipientId || (conversations.find((c: ConversationWithParticipant) => c.id === conversationId)?.participant.id);
-      if (!recipientIdToUse) throw new Error('Recipient not found');
-      
       const sessionId = localStorage.getItem('minso_session');
       
-      // Get recipient's public key for encryption
-      let recipientPublicKey;
-      try {
-        const keyResponse = await fetch(`/api/dm/keys/${recipientIdToUse}`, {
-          headers: {
-            'Authorization': `Bearer ${sessionId}`
-          }
-        });
-        
-        if (!keyResponse.ok) {
-          if (keyResponse.status === 404) {
-            throw new Error('The recipient needs to set up encrypted messaging first. Ask them to visit the Messages page.');
-          }
-          throw new Error('Failed to get recipient public key');
-        }
-        
-        const keyData = await keyResponse.json();
-        recipientPublicKey = keyData.publicKey;
-      } catch (error: any) {
-        throw new Error(error.message || 'Failed to prepare encryption');
-      }
-      
-      // Encrypt message with recipient's public key
-      const recipientEncrypted = await clientCrypto.encryptMessage(content, recipientPublicKey);
-      
-      // Also encrypt with our own public key so we can read our own messages
-      const senderEncrypted = await clientCrypto.encryptMessage(content, userKeys.publicKey);
-      
-      // Send both encrypted versions
+      // Send message with plain text content - server will handle encryption
       const response = await fetch('/api/dm/messages', {
         method: 'POST',
         headers: {
@@ -408,15 +201,7 @@ export default function MessagesPage({ user, onLogout }: MessagesPageProps) {
         body: JSON.stringify({
           conversationId,
           recipientId,
-          content, // This is just for validation on server
-          // For recipient
-          encryptedContent: recipientEncrypted.encryptedContent,
-          encryptedKey: recipientEncrypted.encryptedKey,
-          iv: recipientEncrypted.iv,
-          // For sender (self)
-          senderEncryptedContent: senderEncrypted.encryptedContent,
-          senderEncryptedKey: senderEncrypted.encryptedKey,
-          senderIv: senderEncrypted.iv
+          content // Plain text - server encrypts it
         })
       });
       
@@ -462,77 +247,12 @@ export default function MessagesPage({ user, onLogout }: MessagesPageProps) {
     setShowNewConversation(false); // Close the dialog
   };
 
-  if (!userKeys && keysData !== null) {
-    // Keys exist but are being decrypted
-    return (
-      <Layout user={user} onLogout={onLogout}>
-        <div className="max-w-3xl mx-auto px-6 py-8">
-          <div className="text-center">
-            <MessageCircle size={48} className="mx-auto mb-4 text-beige-text/50" />
-            <h2 className="text-2xl font-bold mb-2">Loading your encryption keys...</h2>
-            <p className="text-beige-text/70">Please wait while we set up secure messaging.</p>
-          </div>
-        </div>
-      </Layout>
-    );
-  }
-
-  if (!userKeys && keysData === null) {
-    // No keys found, trying to generate new ones
-    return (
-      <Layout user={user} onLogout={onLogout}>
-        <motion.div 
-          className="max-w-3xl mx-auto px-6 py-8"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-        >
-          <div className="text-center">
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-            >
-              <MessageCircle size={48} className="mx-auto mb-4 text-beige-text/50" />
-            </motion.div>
-            <motion.h2 
-              className="text-2xl font-bold mb-2"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3, duration: 0.4 }}
-            >
-              Setting up encrypted messaging...
-            </motion.h2>
-            <motion.p 
-              className="text-beige-text/70"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4, duration: 0.4 }}
-            >
-              Generating your encryption keys for secure communication.
-            </motion.p>
-          </div>
-        </motion.div>
-      </Layout>
-    );
-  }
-
   return (
     <Layout user={user} onLogout={onLogout}>
-      <motion.div 
-        className="max-w-7xl mx-auto px-6 py-4"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.5 }}
-      >
+      <div className="max-w-7xl mx-auto px-6 py-4">
         <div className="flex gap-6 h-[calc(100vh-120px)]">
           {/* Conversations List */}
-          <motion.div 
-            className="w-1/3 min-w-[320px]"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5, delay: 0.1 }}
-          >
+          <div className="w-1/3 min-w-[320px]">
             <Card className="h-full bg-dark-card border-subtle-border shadow-lg">
               <CardHeader className="pb-3 border-b border-subtle-border">
                 <div className="flex items-center justify-between">
@@ -610,32 +330,18 @@ export default function MessagesPage({ user, onLogout }: MessagesPageProps) {
               </CardHeader>
               <CardContent className="p-0 overflow-y-auto">
                 {conversations.length === 0 ? (
-                  <motion.div 
-                    className="p-8 text-center text-beige-text/50"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.3, duration: 0.4 }}
-                  >
-                    <motion.div
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      transition={{ delay: 0.4, type: "spring", stiffness: 200 }}
-                    >
+                  <div className="p-8 text-center text-beige-text/50">
+                    <div>
                       <MessageCircle size={48} className="mx-auto mb-4 text-beige-text/30" />
-                    </motion.div>
+                    </div>
                     <h3 className="font-medium mb-2">No conversations yet</h3>
                     <p className="text-sm">Start a new conversation to begin messaging</p>
-                  </motion.div>
+                  </div>
                 ) : (
-                  <motion.div
-                    variants={staggerContainer}
-                    initial="initial"
-                    animate="animate"
-                  >
+                  <div>
                     {conversations.map((conversation: ConversationWithParticipant) => (
-                      <motion.div
+                      <div
                         key={conversation.id}
-                        variants={staggerItem}
                         onClick={() => setSelectedConversation(conversation.id)}
                         className={`p-4 border-b border-subtle-border cursor-pointer transition-all duration-200 ${
                           selectedConversation === conversation.id 
@@ -644,9 +350,6 @@ export default function MessagesPage({ user, onLogout }: MessagesPageProps) {
                               ? 'bg-dark-bg/20 hover:bg-dark-bg/40 border-l-2 border-l-accent-beige/50' 
                               : 'hover:bg-dark-bg/30'
                         }`}
-                        whileHover={{ x: 4 }}
-                        whileTap={{ scale: 0.98 }}
-                        transition={{ type: "spring", stiffness: 400, damping: 25 }}
                       >
                       <div className="flex items-center gap-3">
                         <div className="flex-1 min-w-0">
@@ -684,31 +387,21 @@ export default function MessagesPage({ user, onLogout }: MessagesPageProps) {
                               {conversation.lastMessage.sender.id === user.id && (
                                 <span className="text-accent-beige/70 mr-1">You: </span>
                               )}
-                              {conversation.lastMessage.decryptedContent || (
-                                <span className="italic flex items-center gap-1">
-                                  <Lock size={10} />
-                                  Encrypted message
-                                </span>
-                              )}
+                              {conversation.lastMessage.content}
                             </div>
                           )}
                         </div>
                       </div>
-                    </motion.div>
+                    </div>
                   ))}
-                  </motion.div>
+                  </div>
                 )}
               </CardContent>
             </Card>
-          </motion.div>
+          </div>
 
           {/* Chat Area */}
-          <motion.div 
-            className="flex-1"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-          >
+          <div className="flex-1">
             {selectedConversation || selectedUser ? (
               <Card className="h-full bg-dark-card border-subtle-border shadow-lg flex flex-col">
                 <CardHeader className="pb-4 border-b border-subtle-border bg-dark-bg/40 backdrop-blur-sm">
@@ -748,7 +441,7 @@ export default function MessagesPage({ user, onLogout }: MessagesPageProps) {
                       <div className="flex-1 flex items-center justify-center text-center text-beige-text/50 py-16">
                         <div>
                           <div className="relative mx-auto mb-6 w-16 h-16 bg-accent-beige/10 rounded-2xl flex items-center justify-center">
-                            <Lock size={24} className="text-accent-beige/50" />
+                            <MessageCircle size={24} className="text-accent-beige/50" />
                             <div className="absolute -top-1 -right-1 w-5 h-5 bg-green-500/20 border-2 border-green-500/50 rounded-full flex items-center justify-center">
                               <Shield size={10} className="text-green-400" />
                             </div>
@@ -792,12 +485,7 @@ export default function MessagesPage({ user, onLogout }: MessagesPageProps) {
                                     }`}
                                   >
                                     <div className="text-sm leading-relaxed break-words">
-                                      {message.decryptedContent || (
-                                        <div className="flex items-center gap-2 text-beige-text/50 italic">
-                                          <Lock size={12} />
-                                          Unable to decrypt
-                                        </div>
-                                      )}
+                                      {message.content}
                                     </div>
                                     
                                     <div className={`flex items-center gap-1 mt-2 ${
@@ -889,9 +577,9 @@ export default function MessagesPage({ user, onLogout }: MessagesPageProps) {
                 </div>
               </Card>
             )}
-          </motion.div>
+          </div>
         </div>
-      </motion.div>
+      </div>
     </Layout>
   );
 }

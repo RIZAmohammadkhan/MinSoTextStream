@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type Post, type InsertPost, type Comment, type InsertComment, type Like, type Follow, type PostWithAuthor, type CommentWithAuthor, type UserWithFollowInfo, type Notification, type Bookmark, type PostStats, type Mention, type Conversation, type Message, type UserKeys, type ConversationWithParticipant, type MessageWithSender, users, posts, comments, likes, follows, notifications, bookmarks, mentions, conversations, messages, userKeys } from "@shared/schema";
+import { type User, type InsertUser, type Post, type InsertPost, type Comment, type InsertComment, type Like, type Follow, type PostWithAuthor, type CommentWithAuthor, type UserWithFollowInfo, type Notification, type Bookmark, type PostStats, type Mention, type Conversation, type Message, type ConversationWithParticipant, type MessageWithSender, users, posts, comments, likes, follows, notifications, bookmarks, mentions, conversations, messages } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, asc, sql, ilike, ne, count, inArray, or } from "drizzle-orm";
 import { IStorage } from "./storage";
@@ -670,48 +670,6 @@ export class PostgreSQLStorage implements IStorage {
   }
 
   // DM methods
-  async createUserKeys(userId: string, publicKey: string, encryptedPrivateKey: string): Promise<boolean> {
-    try {
-      await db.insert(userKeys).values({
-        userId,
-        publicKey,
-        encryptedPrivateKey,
-        keyVersion: 1
-      });
-      return true;
-    } catch (error) {
-      // User keys already exist or other error
-      return false;
-    }
-  }
-
-  async getUserKeys(userId: string): Promise<UserKeys | undefined> {
-    const result = await db
-      .select()
-      .from(userKeys)
-      .where(eq(userKeys.userId, userId))
-      .limit(1);
-    
-    return result[0];
-  }
-
-  async getUserPublicKey(userId: string): Promise<UserKeys | undefined> {
-    const result = await db
-      .select({
-        id: userKeys.id,
-        userId: userKeys.userId,
-        publicKey: userKeys.publicKey,
-        encryptedPrivateKey: sql<string>`''`.as('encryptedPrivateKey'), // Don't return private key
-        keyVersion: userKeys.keyVersion,
-        createdAt: userKeys.createdAt
-      })
-      .from(userKeys)
-      .where(eq(userKeys.userId, userId))
-      .limit(1);
-    
-    return result[0];
-  }
-
   async createConversation(participant1Id: string, participant2Id: string): Promise<string> {
     // Check if conversation already exists
     const existing = await db
@@ -778,12 +736,7 @@ export class PostgreSQLStorage implements IStorage {
           id: messages.id,
           conversationId: messages.conversationId,
           senderId: messages.senderId,
-          encryptedContent: messages.encryptedContent,
-          encryptedKey: messages.encryptedKey,
-          iv: messages.iv,
-          senderEncryptedContent: messages.senderEncryptedContent,
-          senderEncryptedKey: messages.senderEncryptedKey,
-          senderIv: messages.senderIv,
+          content: messages.content,
           read: messages.read,
           readAt: messages.readAt,
           createdAt: messages.createdAt,
@@ -875,22 +828,12 @@ export class PostgreSQLStorage implements IStorage {
   async createMessage(
     conversationId: string,
     senderId: string,
-    encryptedContent: string,
-    encryptedKey: string,
-    iv: string,
-    senderEncryptedContent?: string,
-    senderEncryptedKey?: string,
-    senderIv?: string
+    content: string
   ): Promise<MessageWithSender> {
     const result = await db.insert(messages).values({
       conversationId,
       senderId,
-      encryptedContent,
-      encryptedKey,
-      iv,
-      senderEncryptedContent,
-      senderEncryptedKey,
-      senderIv
+      content
     }).returning();
 
     // Update conversation's last message time
@@ -915,12 +858,7 @@ export class PostgreSQLStorage implements IStorage {
         id: messages.id,
         conversationId: messages.conversationId,
         senderId: messages.senderId,
-        encryptedContent: messages.encryptedContent,
-        encryptedKey: messages.encryptedKey,
-        iv: messages.iv,
-        senderEncryptedContent: messages.senderEncryptedContent,
-        senderEncryptedKey: messages.senderEncryptedKey,
-        senderIv: messages.senderIv,
+        content: messages.content,
         read: messages.read,
         readAt: messages.readAt,
         createdAt: messages.createdAt,
@@ -940,12 +878,7 @@ export class PostgreSQLStorage implements IStorage {
       id: row.id,
       conversationId: row.conversationId,
       senderId: row.senderId,
-      encryptedContent: row.encryptedContent,
-      encryptedKey: row.encryptedKey,
-      iv: row.iv,
-      senderEncryptedContent: row.senderEncryptedContent,
-      senderEncryptedKey: row.senderEncryptedKey,
-      senderIv: row.senderIv,
+      content: row.content,
       read: row.read,
       readAt: row.readAt,
       createdAt: row.createdAt,

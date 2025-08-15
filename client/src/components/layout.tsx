@@ -4,8 +4,6 @@ import { Badge } from "@/components/ui/badge";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { motion, AnimatePresence } from "framer-motion";
-import { NavButton } from "./page-transition";
 import ProfileMenu from "./profile-menu";
 
 interface LayoutProps {
@@ -89,16 +87,15 @@ export default function Layout({ children, user, onLogout }: LayoutProps) {
     `relative transition-all duration-300 ${location === path ? 'text-accent-beige' : 'text-beige-text hover:text-accent-beige'}`;
 
   const createNavButton = (path: string, icon: React.ReactNode, title: string, badge?: React.ReactNode) => (
-    <NavButton
+    <button
       onClick={() => setLocation(path)}
-      isActive={location === path}
       className={getNavButtonClass(path)}
     >
       <div className="relative flex items-center justify-center" title={title}>
         {icon}
         {badge}
       </div>
-    </NavButton>
+    </button>
   );
 
   return (
@@ -107,16 +104,13 @@ export default function Layout({ children, user, onLogout }: LayoutProps) {
       <header className="sticky top-0 bg-dark-bg/95 backdrop-blur-md border-b border-subtle-border z-50">
         <div className="max-w-3xl mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
-            <motion.h1 
+            <h1 
               className="text-3xl font-bold text-accent-beige tracking-tight cursor-pointer hover:text-accent-beige/80 transition-colors" 
               onClick={() => setLocation('/')}
               data-testid="text-logo"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              transition={{ type: "spring", stiffness: 400, damping: 17 }}
             >
               MinSO
-            </motion.h1>
+            </h1>
             <nav className="flex items-center space-x-6">
               {createNavButton('/', <Home size={22} />, "Home")}
               
@@ -126,19 +120,14 @@ export default function Layout({ children, user, onLogout }: LayoutProps) {
 
               {createNavButton('/messages', <Send size={22} />, "Messages", 
                 messageData?.count > 0 && (
-                  <motion.div
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    exit={{ scale: 0 }}
-                    className="absolute -top-2 -right-2"
-                  >
+                  <div className="absolute -top-2 -right-2">
                     <Badge 
                       variant="destructive" 
                       className="h-5 w-5 flex items-center justify-center text-xs p-0 bg-red-500 hover:bg-red-500"
                     >
                       {messageData.count > 99 ? '99+' : messageData.count}
                     </Badge>
-                  </motion.div>
+                  </div>
                 )
               )}
 
@@ -146,19 +135,14 @@ export default function Layout({ children, user, onLogout }: LayoutProps) {
 
               {createNavButton('/notifications', <Bell size={22} />, "Notifications",
                 notificationData?.count > 0 && (
-                  <motion.div
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    exit={{ scale: 0 }}
-                    className="absolute -top-2 -right-2"
-                  >
+                  <div className="absolute -top-2 -right-2">
                     <Badge 
                       variant="destructive" 
                       className="h-5 w-5 flex items-center justify-center text-xs p-0 bg-red-500 hover:bg-red-500"
                     >
                       {notificationData.count > 99 ? '99+' : notificationData.count}
                     </Badge>
-                  </motion.div>
+                  </div>
                 )
               )}
               
@@ -172,25 +156,17 @@ export default function Layout({ children, user, onLogout }: LayoutProps) {
       {children}
 
       {/* Floating Action Button */}
-      <AnimatePresence>
-        {showScrollTop && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.8, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.8, y: 20 }}
-            transition={{ type: "spring", stiffness: 400, damping: 25 }}
-            className="fixed bottom-6 right-6 z-50"
-          >
-            <Button
-              onClick={scrollToTop}
+      {showScrollTop && (
+        <div className="fixed bottom-6 right-6 z-50">
+          <Button
+            onClick={scrollToTop}
               className="bg-accent-beige text-dark-bg w-14 h-14 rounded-full shadow-lg hover:bg-accent-beige/90 transition-all duration-200 p-0"
               data-testid="button-scroll-top"
             >
               <ArrowUp size={20} />
             </Button>
-          </motion.div>
+          </div>
         )}
-      </AnimatePresence>
     </div>
   );
 }

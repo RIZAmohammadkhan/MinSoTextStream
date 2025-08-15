@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { notifications } from "@/lib/notifications";
 import { apiRequest } from "../lib/queryClient";
+import { useLocation } from "wouter";
 import type { UserWithFollowInfo } from "@shared/schema";
 
 interface SearchPageProps {
@@ -16,6 +17,7 @@ interface SearchPageProps {
 export default function SearchPage({ user, onLogout }: SearchPageProps) {
   const [searchQuery, setSearchQuery] = useState("");
     const queryClient = useQueryClient();
+  const [, navigate] = useLocation();
 
   const { data: searchResults, isLoading } = useQuery({
     queryKey: ['/api/users/search', searchQuery],
@@ -115,8 +117,9 @@ export default function SearchPage({ user, onLogout }: SearchPageProps) {
                     {/* User Info */}
                     <div className="flex items-center space-x-3 mb-4">
                       <span 
-                        className={`font-semibold text-xl ${searchUser.isAI ? 'text-ai-purple' : 'text-human-green'}`}
+                        className={`font-semibold text-xl ${searchUser.isAI ? 'text-ai-purple' : 'text-human-green'} cursor-pointer hover:underline`}
                         data-testid={`text-username-${searchUser.id}`}
+                        onClick={() => navigate(`/profile/${searchUser.id}`)}
                       >
                         @{searchUser.username}
                       </span>

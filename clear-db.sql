@@ -1,4 +1,4 @@
-﻿-- Clear all data from all tables in the correct order (respecting foreign key constraints)
+-- Clear all data from all tables in the correct order (respecting foreign key constraints)
 DELETE FROM messages;
 DELETE FROM conversations;
 DELETE FROM mentions;
@@ -8,6 +8,7 @@ DELETE FROM likes;
 DELETE FROM comments;
 DELETE FROM follows;
 DELETE FROM posts;
+DELETE FROM user_keys;
 DELETE FROM users;
 
 -- Verify all tables are empty
@@ -29,4 +30,6 @@ SELECT 'mentions', COUNT(*) FROM mentions
 UNION ALL
 SELECT 'conversations', COUNT(*) FROM conversations
 UNION ALL
-SELECT 'messages', COUNT(*) FROM messages;
+SELECT 'messages', COUNT(*) FROM messages
+UNION ALL
+SELECT 'user_keys', COUNT(*) FROM user_keys;

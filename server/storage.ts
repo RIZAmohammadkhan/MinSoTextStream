@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type Post, type InsertPost, type Comment, type InsertComment, type Like, type Follow, type PostWithAuthor, type CommentWithAuthor, type UserWithFollowInfo, type Notification, type Bookmark, type PostStats, type Mention, type Conversation, type Message, type UserKeys, type ConversationWithParticipant, type MessageWithSender } from "@shared/schema";
+import { type User, type InsertUser, type Post, type InsertPost, type Comment, type InsertComment, type Like, type Follow, type PostWithAuthor, type CommentWithAuthor, type UserWithFollowInfo, type Notification, type Bookmark, type PostStats, type Mention, type Conversation, type Message, type ConversationWithParticipant, type MessageWithSender } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -56,9 +56,6 @@ export interface IStorage {
   getUsersByUsernames(usernames: string[]): Promise<User[]>;
   
   // DM methods
-  createUserKeys(userId: string, publicKey: string, encryptedPrivateKey: string): Promise<boolean>;
-  getUserKeys(userId: string): Promise<UserKeys | undefined>;
-  getUserPublicKey(userId: string): Promise<UserKeys | undefined>;
   createConversation(participant1Id: string, participant2Id: string): Promise<string>;
   getUserConversations(userId: string): Promise<ConversationWithParticipant[]>;
   getConversationParticipants(conversationId: string): Promise<User[]>;
@@ -66,12 +63,7 @@ export interface IStorage {
   createMessage(
     conversationId: string, 
     senderId: string, 
-    encryptedContent: string, 
-    encryptedKey: string, 
-    iv: string,
-    senderEncryptedContent?: string,
-    senderEncryptedKey?: string,
-    senderIv?: string
+    content: string
   ): Promise<MessageWithSender>;
   getConversationMessages(conversationId: string, page: number, limit: number): Promise<MessageWithSender[]>;
   markMessagesAsRead(conversationId: string, userId: string): Promise<void>;
@@ -92,7 +84,6 @@ export class MemStorage implements IStorage {
   private mentions: Map<string, Mention>;
   private conversations: Map<string, Conversation>;
   private messages: Map<string, Message>;
-  private userKeys: Map<string, UserKeys>;
 
   constructor() {
     this.users = new Map();
@@ -105,7 +96,6 @@ export class MemStorage implements IStorage {
     this.mentions = new Map();
     this.conversations = new Map();
     this.messages = new Map();
-    this.userKeys = new Map();
   }
 
   async getUser(id: string): Promise<User | undefined> {
@@ -639,32 +629,6 @@ export class MemStorage implements IStorage {
   }
 
   // DM methods
-  async createUserKeys(userId: string, publicKey: string, encryptedPrivateKey: string): Promise<boolean> {
-    if (this.userKeys.has(userId)) {
-      return false; // Keys already exist
-    }
-    
-    const userKey: UserKeys = {
-      id: randomUUID(),
-      userId,
-      publicKey,
-      encryptedPrivateKey,
-      keyVersion: 1,
-      createdAt: new Date()
-    };
-    
-    this.userKeys.set(userId, userKey);
-    return true;
-  }
-
-  async getUserKeys(userId: string): Promise<UserKeys | undefined> {
-    return this.userKeys.get(userId);
-  }
-
-  async getUserPublicKey(userId: string): Promise<UserKeys | undefined> {
-    return this.userKeys.get(userId);
-  }
-
   async createConversation(participant1Id: string, participant2Id: string): Promise<string> {
     // Check if conversation already exists
     const existingConversation = Array.from(this.conversations.values()).find(conv => 
@@ -752,23 +716,13 @@ export class MemStorage implements IStorage {
   async createMessage(
     conversationId: string, 
     senderId: string, 
-    encryptedContent: string, 
-    encryptedKey: string, 
-    iv: string,
-    senderEncryptedContent?: string,
-    senderEncryptedKey?: string,
-    senderIv?: string
+    content: string
   ): Promise<MessageWithSender> {
     const message: Message = {
       id: randomUUID(),
       conversationId,
       senderId,
-      encryptedContent,
-      encryptedKey,
-      iv,
-      senderEncryptedContent: senderEncryptedContent || null,
-      senderEncryptedKey: senderEncryptedKey || null,
-      senderIv: senderIv || null,
+      content,
       read: false,
       readAt: null,
       createdAt: new Date()
