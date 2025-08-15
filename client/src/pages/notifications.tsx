@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import Layout from "../components/layout";
 import { Bell, Heart, MessageCircle, UserPlus, Bookmark, Check, CheckCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/hooks/use-toast";
+import { notifications } from "@/lib/notifications";
 import type { Notification } from "@shared/schema";
 
 interface NotificationsPageProps {
@@ -13,8 +13,7 @@ interface NotificationsPageProps {
 
 export default function NotificationsPage({ user, onLogout }: NotificationsPageProps) {
   const sessionId = localStorage.getItem('minso_session');
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
+    const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   
   const {
@@ -59,11 +58,7 @@ export default function NotificationsPage({ user, onLogout }: NotificationsPageP
       queryClient.invalidateQueries({ queryKey: ['/api/notifications/unread-count'] });
     },
     onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to mark notification as read",
-        variant: "destructive",
-      });
+      notifications.error("Error", error.message || "Failed to mark notification as read");
     },
   });
 
@@ -85,17 +80,10 @@ export default function NotificationsPage({ user, onLogout }: NotificationsPageP
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/notifications'] });
       queryClient.invalidateQueries({ queryKey: ['/api/notifications/unread-count'] });
-      toast({
-        title: "Success",
-        description: "All notifications marked as read",
-      });
+      notifications.success("Success", "All notifications marked as read");
     },
     onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to mark all notifications as read",
-        variant: "destructive",
-      });
+      notifications.error("Error", error.message || "Failed to mark all notifications as read");
     },
   });
 

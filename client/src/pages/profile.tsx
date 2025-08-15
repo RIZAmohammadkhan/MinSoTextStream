@@ -5,7 +5,7 @@ import PostCard from "../components/post-card";
 import SettingsDialog from "../components/settings-dialog";
 import { Button } from "@/components/ui/button";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useToast } from "@/hooks/use-toast";
+import { notifications } from "@/lib/notifications";
 import { apiRequest } from "../lib/queryClient";
 import type { PostWithAuthor, User } from "@shared/schema";
 
@@ -17,8 +17,7 @@ interface ProfilePageProps {
 
 export default function ProfilePage({ user, onLogout, userId }: ProfilePageProps) {
   const [activeTab, setActiveTab] = useState<'posts' | 'followers' | 'following'>('posts');
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
+    const queryClient = useQueryClient();
   
   // Determine which user profile to show
   const profileUserId = userId || user.id;
@@ -129,17 +128,10 @@ export default function ProfilePage({ user, onLogout, userId }: ProfilePageProps
       queryClient.invalidateQueries({ queryKey: ['/api/users', profileUserId] });
       queryClient.invalidateQueries({ queryKey: ['/api/users', profileUserId, 'followers'] });
       queryClient.invalidateQueries({ queryKey: ['/api/users', user.id, 'following'] });
-      toast({
-        title: "Success",
-        description: profileUser?.isFollowing ? "Unfollowed user" : "Now following user",
-      });
+      notifications.success("Success", profileUser?.isFollowing ? "Unfollowed user" : "Now following user");
     },
     onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to toggle follow",
-        variant: "destructive",
-      });
+      notifications.error("Error", error.message || "Failed to toggle follow");
     },
   });
 

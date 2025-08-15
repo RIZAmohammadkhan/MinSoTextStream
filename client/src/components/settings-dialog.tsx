@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { useToast } from "@/hooks/use-toast";
+import { notifications } from "@/lib/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 interface SettingsDialogProps {
@@ -24,8 +24,7 @@ export default function SettingsDialog({ user, onLogout, children }: SettingsDia
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [newBio, setNewBio] = useState(user.bio || "");
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
+    const queryClient = useQueryClient();
 
   // Change Password Mutation
   const changePasswordMutation = useMutation({
@@ -52,17 +51,10 @@ export default function SettingsDialog({ user, onLogout, children }: SettingsDia
       setNewPassword("");
       setConfirmPassword("");
       setIsChangingPassword(false);
-      toast({
-        title: "Success",
-        description: "Password changed successfully",
-      });
+      notifications.success("Success", "Password changed successfully");
     },
     onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to change password",
-        variant: "destructive",
-      });
+      notifications.error("Error", error.message || "Failed to change password");
     },
   });
 
@@ -91,17 +83,10 @@ export default function SettingsDialog({ user, onLogout, children }: SettingsDia
       // Update the user object in parent component if possible
       queryClient.invalidateQueries({ queryKey: ['/api/users', user.id] });
       queryClient.setQueryData(['/api/users', user.id], updatedUser);
-      toast({
-        title: "Success",
-        description: "Bio updated successfully",
-      });
+      notifications.success("Success", "Bio updated successfully");
     },
     onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update bio",
-        variant: "destructive",
-      });
+      notifications.error("Error", error.message || "Failed to update bio");
     },
   });
 
@@ -124,20 +109,13 @@ export default function SettingsDialog({ user, onLogout, children }: SettingsDia
       return response.json();
     },
     onSuccess: () => {
-      toast({
-        title: "Account Deleted",
-        description: "Your account has been permanently deleted",
-      });
+      notifications.success("Account Deleted", "Your account has been permanently deleted");
       // Clear session and logout
       localStorage.removeItem('minso_session');
       onLogout();
     },
     onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to delete account",
-        variant: "destructive",
-      });
+      notifications.error("Error", error.message || "Failed to delete account");
     },
   });
 
@@ -145,29 +123,17 @@ export default function SettingsDialog({ user, onLogout, children }: SettingsDia
     e.preventDefault();
     
     if (!currentPassword || !newPassword || !confirmPassword) {
-      toast({
-        title: "Error",
-        description: "Please fill in all password fields",
-        variant: "destructive",
-      });
+      notifications.error("Error", "Please fill in all password fields");
       return;
     }
     
     if (newPassword !== confirmPassword) {
-      toast({
-        title: "Error",
-        description: "New passwords don't match",
-        variant: "destructive",
-      });
+      notifications.error("Error", "New passwords don't match");
       return;
     }
     
     if (newPassword.length < 6) {
-      toast({
-        title: "Error",
-        description: "Password must be at least 6 characters long",
-        variant: "destructive",
-      });
+      notifications.error("Error", "Password must be at least 6 characters long");
       return;
     }
     
@@ -184,11 +150,7 @@ export default function SettingsDialog({ user, onLogout, children }: SettingsDia
   const handleBioUpdate = (e: React.FormEvent) => {
     e.preventDefault();
     if (newBio.length > 160) {
-      toast({
-        title: "Error",
-        description: "Bio must be 160 characters or less",
-        variant: "destructive",
-      });
+      notifications.error("Error", "Bio must be 160 characters or less");
       return;
     }
     updateBioMutation.mutate(newBio);

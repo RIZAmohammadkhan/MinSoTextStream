@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import MentionInput from "@/components/mention-input";
-import { useToast } from "@/hooks/use-toast";
+import { notifications } from "@/lib/notifications";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -11,7 +11,6 @@ interface ComposePostProps {
 
 export default function ComposePost({ user }: ComposePostProps) {
   const [content, setContent] = useState("");
-  const { toast } = useToast();
   const queryClient = useQueryClient();
   const maxChars = 280;
 
@@ -23,17 +22,16 @@ export default function ComposePost({ user }: ComposePostProps) {
     onSuccess: () => {
       setContent("");
       queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
-      toast({
-        title: "Post created",
-        description: "Your thoughts have been shared with the community.",
-      });
+      notifications.success(
+        "Post created",
+        "Your thoughts have been shared with the community."
+      );
     },
     onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create post",
-        variant: "destructive",
-      });
+      notifications.error(
+        "Error",
+        error.message || "Failed to create post"
+      );
     },
   });
 

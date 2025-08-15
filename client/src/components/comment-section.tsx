@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import MentionInput from "@/components/mention-input";
 import MentionText from "@/components/mention-text";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useToast } from "@/hooks/use-toast";
+import { notifications } from "@/lib/notifications";
 import { apiRequest } from "@/lib/queryClient";
 import type { CommentWithAuthor } from "@shared/schema";
 
@@ -16,8 +16,7 @@ interface CommentSectionProps {
 export default function CommentSection({ postId, user }: CommentSectionProps) {
   const [newComment, setNewComment] = useState("");
   const [commentAnimations, setCommentAnimations] = useState<{[key: string]: 'like' | 'unlike' | null}>({});
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
+    const queryClient = useQueryClient();
 
   const { data: comments, isLoading } = useQuery({
     queryKey: ['/api/posts', postId, 'comments'],
@@ -38,11 +37,7 @@ export default function CommentSection({ postId, user }: CommentSectionProps) {
       queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
     },
     onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create comment",
-        variant: "destructive",
-      });
+      notifications.error("Error", error.message || "Failed to create comment");
     },
   });
 
@@ -77,11 +72,7 @@ export default function CommentSection({ postId, user }: CommentSectionProps) {
         ...prev,
         [commentId]: null
       }));
-      toast({
-        title: "Error",
-        description: error.message || "Failed to toggle like",
-        variant: "destructive",
-      });
+      notifications.error("Error", error.message || "Failed to toggle like");
     },
   });
 

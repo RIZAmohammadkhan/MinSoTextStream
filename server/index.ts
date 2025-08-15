@@ -45,7 +45,11 @@ app.use((req, res, next) => {
     const message = err.message || "Internal Server Error";
 
     res.status(status).json({ message });
-    throw err;
+    
+    // Only log non-validation errors in detail
+    if (err.name !== 'ZodError') {
+      console.error('Server error:', err);
+    }
   });
 
   // importantly only setup vite in development and after

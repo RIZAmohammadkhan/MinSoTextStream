@@ -2,7 +2,7 @@ import { forwardRef, useState } from "react";
 import { Heart, MessageCircle, MoreHorizontal, Trash2, Bookmark, Edit3, Share, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useToast } from "@/hooks/use-toast";
+import { notifications } from "@/lib/notifications";
 import { apiRequest } from "@/lib/queryClient";
 import CommentSection from "@/components/comment-section";
 import MentionText from "@/components/mention-text";
@@ -29,8 +29,7 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user, showComme
   const [heartAnimation, setHeartAnimation] = useState<'like' | 'unlike' | null>(null);
   const [bookmarkAnimation, setBookmarkAnimation] = useState<'save' | 'remove' | null>(null);
   const [lastTap, setLastTap] = useState(0);
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
+    const queryClient = useQueryClient();
   const [, navigate] = useLocation();
 
   const likePostMutation = useMutation({
@@ -64,11 +63,7 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user, showComme
       setIsLiking(false);
       setHeartAnimation(null);
       console.error('Like mutation error:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to toggle like",
-        variant: "destructive",
-      });
+      notifications.error("Error", error.message || "Failed to toggle like");
     },
   });
 
@@ -81,17 +76,10 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user, showComme
       queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
       queryClient.invalidateQueries({ queryKey: ['/api/bookmarks'] });
       queryClient.invalidateQueries({ queryKey: ['trending-posts'] });
-      toast({
-        title: "Success",
-        description: "Post deleted successfully",
-      });
+      notifications.success("Success", "Post deleted successfully");
     },
     onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to delete post",
-        variant: "destructive",
-      });
+      notifications.error("Error", error.message || "Failed to delete post");
     },
   });
 
@@ -114,11 +102,7 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user, showComme
     },
     onError: (error: any) => {
       setBookmarkAnimation(null);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to toggle bookmark",
-        variant: "destructive",
-      });
+      notifications.error("Error", error.message || "Failed to toggle bookmark");
     },
   });
 
@@ -141,10 +125,7 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user, showComme
           url: postUrl,
         });
         
-        toast({
-          title: "Post Shared",
-          description: "Post shared successfully!",
-        });
+        notifications.success("Post Shared", "Post shared successfully!");
         return;
       } catch (error) {
         // User cancelled or share failed, fall back to clipboard
@@ -155,16 +136,9 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user, showComme
     // Fallback: Copy only the URL to clipboard (like modern social media)
     try {
       await navigator.clipboard.writeText(postUrl);
-      toast({
-        title: "Link Copied",
-        description: "Post link copied to clipboard!",
-      });
+      notifications.success("Link Copied", "Post link copied to clipboard!");
     } catch (error) {
-      toast({
-        title: "Share Failed",
-        description: "Unable to copy link. Please copy the URL manually.",
-        variant: "destructive",
-      });
+      notifications.error("Share Failed", "Unable to copy link. Please copy the URL manually.");
     }
   };
 

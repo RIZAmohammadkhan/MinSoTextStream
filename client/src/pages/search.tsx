@@ -4,7 +4,7 @@ import Layout from "../components/layout";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useToast } from "@/hooks/use-toast";
+import { notifications } from "@/lib/notifications";
 import { apiRequest } from "../lib/queryClient";
 import type { UserWithFollowInfo } from "@shared/schema";
 
@@ -15,8 +15,7 @@ interface SearchPageProps {
 
 export default function SearchPage({ user, onLogout }: SearchPageProps) {
   const [searchQuery, setSearchQuery] = useState("");
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
+    const queryClient = useQueryClient();
 
   const { data: searchResults, isLoading } = useQuery({
     queryKey: ['/api/users/search', searchQuery],
@@ -47,17 +46,10 @@ export default function SearchPage({ user, onLogout }: SearchPageProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/users/search'] });
-      toast({
-        title: "Success",
-        description: "Follow status updated successfully.",
-      });
+      notifications.success("Success", "Follow status updated successfully.");
     },
     onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update follow status",
-        variant: "destructive",
-      });
+      notifications.error("Error", error.message || "Failed to update follow status");
     },
   });
 

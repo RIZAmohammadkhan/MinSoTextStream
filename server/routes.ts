@@ -143,18 +143,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
         token: jwtToken
       });
     } catch (error: any) {
-      console.error('Registration error:', error);
-      
       // Handle validation errors
       if (error.name === 'ZodError') {
-        const firstError = error.errors[0];
+        console.log(`Registration validation failed: ${error.errors.map((e: any) => `${e.path[0]}: ${e.message}`).join(', ')}`);
+        
+        const errors = error.errors.map((err: any) => ({
+          field: err.path[0],
+          message: err.message,
+          code: err.code
+        }));
+        
+        // Create user-friendly error messages
+        const userFriendlyErrors = errors.map((err: any) => {
+          switch (err.field) {
+            case 'username':
+              if (err.code === 'too_small') {
+                return { field: err.field, message: 'Username must be at least 3 characters long' };
+              } else if (err.code === 'too_big') {
+                return { field: err.field, message: 'Username must be no more than 20 characters long' };
+              } else if (err.code === 'invalid_string') {
+                return { field: err.field, message: 'Username can only contain letters, numbers, and underscores' };
+              }
+              break;
+            case 'password':
+              if (err.code === 'too_small') {
+                return { field: err.field, message: 'Password must be at least 6 characters long' };
+              }
+              break;
+            case 'bio':
+              if (err.code === 'too_big') {
+                return { field: err.field, message: 'Bio must be less than 500 characters' };
+              }
+              break;
+          }
+          return { field: err.field, message: err.message };
+        });
+        
         return res.status(400).json({ 
-          message: firstError.message,
-          field: firstError.path[0],
-          details: firstError.message
+          message: "Validation failed",
+          errors: userFriendlyErrors,
+          details: userFriendlyErrors.length === 1 
+            ? userFriendlyErrors[0].message 
+            : `Please fix the following errors: ${userFriendlyErrors.map((e: any) => e.message).join(', ')}`
         });
       }
       
+      console.error('Registration error:', error.message);
       res.status(500).json({ 
         message: "Registration failed", 
         details: "An internal error occurred. Please try again later."
