@@ -1,6 +1,6 @@
-import { type User, type InsertUser, type Post, type InsertPost, type Comment, type InsertComment, type Like, type Follow, type PostWithAuthor, type CommentWithAuthor, type UserWithFollowInfo, type Notification, type Bookmark, type PostStats, users, posts, comments, likes, follows, notifications, bookmarks } from "@shared/schema";
+import { type User, type InsertUser, type Post, type InsertPost, type Comment, type InsertComment, type Like, type Follow, type PostWithAuthor, type CommentWithAuthor, type UserWithFollowInfo, type Notification, type Bookmark, type PostStats, type Mention, users, posts, comments, likes, follows, notifications, bookmarks, mentions } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, asc, sql, ilike, ne, count } from "drizzle-orm";
+import { eq, and, desc, asc, sql, ilike, ne, count, inArray } from "drizzle-orm";
 import { IStorage } from "./storage";
 
 export class PostgreSQLStorage implements IStorage {
@@ -218,6 +218,37 @@ export class PostgreSQLStorage implements IStorage {
       author: this.createPublicUser(row.author),
       isLiked: false,
     }));
+  }
+
+  async getComment(commentId: string): Promise<CommentWithAuthor | undefined> {
+    const result = await db
+      .select({
+        id: comments.id,
+        content: comments.content,
+        authorId: comments.authorId,
+        postId: comments.postId,
+        likeCount: comments.likeCount,
+        createdAt: comments.createdAt,
+        author: users,
+      })
+      .from(comments)
+      .innerJoin(users, eq(comments.authorId, users.id))
+      .where(eq(comments.id, commentId))
+      .limit(1);
+
+    if (result.length === 0) return undefined;
+
+    const row = result[0];
+    return {
+      id: row.id,
+      content: row.content,
+      authorId: row.authorId,
+      postId: row.postId,
+      likeCount: row.likeCount,
+      createdAt: row.createdAt,
+      author: this.createPublicUser(row.author),
+      isLiked: false,
+    };
   }
 
   async createComment(comment: InsertComment, authorId: string): Promise<Comment> {
@@ -554,6 +585,10 @@ export class PostgreSQLStorage implements IStorage {
   }
 
   async getTrendingPosts(limit: number): Promise<PostWithAuthor[]> {
+    // Use a sophisticated trending algorithm that considers:
+    // 1. Time decay (newer posts get higher scores)
+    // 2. Engagement (likes + comments with weighted scoring)
+    // 3. Wilson Score for statistical confidence
     const result = await db
       .select({
         id: posts.id,
@@ -563,10 +598,40 @@ export class PostgreSQLStorage implements IStorage {
         commentCount: posts.commentCount,
         createdAt: posts.createdAt,
         author: users,
+        trendingScore: sql<number>`
+          (
+            -- Time decay factor (exponential decay over 24 hours)
+            EXP(-EXTRACT(EPOCH FROM (NOW() - ${posts.createdAt})) / 86400.0) *
+            
+            -- Wilson Score Lower Bound for 95% confidence
+            CASE 
+              WHEN (${posts.likeCount} + ${posts.commentCount}) > 0 THEN
+                (
+                  (${posts.likeCount} + ${posts.commentCount} * 0.5) / (${posts.likeCount} + ${posts.commentCount}) +
+                  1.96 * 1.96 / (2 * (${posts.likeCount} + ${posts.commentCount})) -
+                  1.96 * SQRT(
+                    (
+                      (${posts.likeCount} + ${posts.commentCount} * 0.5) / (${posts.likeCount} + ${posts.commentCount}) *
+                      (1 - (${posts.likeCount} + ${posts.commentCount} * 0.5) / (${posts.likeCount} + ${posts.commentCount})) +
+                      1.96 * 1.96 / (4 * (${posts.likeCount} + ${posts.commentCount}))
+                    ) / (${posts.likeCount} + ${posts.commentCount})
+                  )
+                ) / (1 + 1.96 * 1.96 / (${posts.likeCount} + ${posts.commentCount}))
+              ELSE 0
+            END *
+            
+            -- Engagement boost (logarithmic to prevent domination by viral posts)
+            LN(${posts.likeCount} + ${posts.commentCount} + 1)
+          ) +
+          
+          -- Base engagement score with time decay
+          (${posts.likeCount} + ${posts.commentCount}) * 
+          EXP(-EXTRACT(EPOCH FROM (NOW() - ${posts.createdAt})) / 86400.0) * 0.1
+        `.as('trending_score')
       })
       .from(posts)
       .innerJoin(users, eq(posts.authorId, users.id))
-      .orderBy(desc(sql`${posts.likeCount} + ${posts.commentCount}`))
+      .orderBy(desc(sql`trending_score`))
       .limit(limit);
 
     return result.map(row => ({
@@ -580,5 +645,27 @@ export class PostgreSQLStorage implements IStorage {
       isLiked: false,
       isBookmarked: false,
     }));
+  }
+
+  // Mention methods
+  async createMention(mentionedUserId: string, mentionedByUserId: string, postId?: string, commentId?: string): Promise<Mention> {
+    const result = await db.insert(mentions).values({
+      mentionedUserId,
+      mentionedByUserId,
+      postId: postId || null,
+      commentId: commentId || null,
+    }).returning();
+    return result[0];
+  }
+
+  async getUsersByUsernames(usernames: string[]): Promise<User[]> {
+    if (usernames.length === 0) return [];
+    
+    const result = await db
+      .select()
+      .from(users)
+      .where(inArray(users.username, usernames));
+    
+    return result;
   }
 }

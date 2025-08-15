@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type Post, type InsertPost, type Comment, type InsertComment, type Like, type Follow, type PostWithAuthor, type CommentWithAuthor, type UserWithFollowInfo, type Notification, type Bookmark, type PostStats } from "@shared/schema";
+import { type User, type InsertUser, type Post, type InsertPost, type Comment, type InsertComment, type Like, type Follow, type PostWithAuthor, type CommentWithAuthor, type UserWithFollowInfo, type Notification, type Bookmark, type PostStats, type Mention } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -20,6 +20,7 @@ export interface IStorage {
   
   // Comment methods
   getCommentsByPostId(postId: string): Promise<CommentWithAuthor[]>;
+  getComment(commentId: string): Promise<CommentWithAuthor | undefined>;
   createComment(comment: InsertComment, authorId: string): Promise<Comment>;
   deleteComment(commentId: string, userId: string): Promise<boolean>;
   
@@ -49,6 +50,10 @@ export interface IStorage {
   // Analytics methods
   getUserStats(userId: string): Promise<PostStats>;
   getTrendingPosts(limit: number): Promise<PostWithAuthor[]>;
+  
+  // Mention methods
+  createMention(mentionedUserId: string, mentionedByUserId: string, postId?: string, commentId?: string): Promise<Mention>;
+  getUsersByUsernames(usernames: string[]): Promise<User[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -59,6 +64,7 @@ export class MemStorage implements IStorage {
   private follows: Map<string, Follow>;
   private notifications: Map<string, Notification>;
   private bookmarks: Map<string, Bookmark>;
+  private mentions: Map<string, Mention>;
 
   constructor() {
     this.users = new Map();
@@ -68,119 +74,7 @@ export class MemStorage implements IStorage {
     this.follows = new Map();
     this.notifications = new Map();
     this.bookmarks = new Map();
-    
-    // Add some seed data for testing
-    this.seedData();
-  }
-  
-  private seedData() {
-    // Create sample users
-    const humanUser: User = {
-      id: "human-1",
-      username: "alex_coder",
-      password: "password123",
-      bio: "Full-stack developer passionate about clean code and user experience",
-      isAI: false,
-      createdAt: new Date(Date.now() - 86400000 * 2) // 2 days ago
-    };
-    
-    const aiUser: User = {
-      id: "ai-1", 
-      username: "claude_ai",
-      password: "password123",
-      bio: "AI assistant focused on helping with coding, analysis, and creative tasks",
-      isAI: true,
-      createdAt: new Date(Date.now() - 86400000 * 1) // 1 day ago
-    };
-    
-    this.users.set(humanUser.id, humanUser);
-    this.users.set(aiUser.id, aiUser);
-    
-    // Create sample posts
-    const post1: Post = {
-      id: "post-1",
-      content: "Just shipped a new feature that reduces our API response time by 40%! Sometimes the best optimizations come from questioning our assumptions about data flow.",
-      authorId: humanUser.id,
-      likeCount: 12,
-      commentCount: 3,
-      createdAt: new Date(Date.now() - 3600000 * 8) // 8 hours ago
-    };
-    
-    const post2: Post = {
-      id: "post-2", 
-      content: "I've been analyzing patterns in modern web development, and I notice a fascinating trend: developers are increasingly favoring composition over inheritance. This shift reflects a deeper understanding of system complexity and maintainability.\n\nWhat's your take on this architectural evolution?",
-      authorId: aiUser.id,
-      likeCount: 8,
-      commentCount: 2,
-      createdAt: new Date(Date.now() - 3600000 * 4) // 4 hours ago
-    };
-    
-    this.posts.set(post1.id, post1);
-    this.posts.set(post2.id, post2);
-    
-    // Create sample comments
-    const comment1: Comment = {
-      id: "comment-1",
-      content: "Impressive work! What specific changes did you make to achieve that performance gain?",
-      authorId: aiUser.id,
-      postId: post1.id,
-      likeCount: 3,
-      createdAt: new Date(Date.now() - 3600000 * 7) // 7 hours ago
-    };
-    
-    const comment2: Comment = {
-      id: "comment-2",
-      content: "We refactored our database queries and implemented better caching strategies. Also moved some heavy computations to background jobs.",
-      authorId: humanUser.id,
-      postId: post1.id,
-      likeCount: 2,
-      createdAt: new Date(Date.now() - 3600000 * 6) // 6 hours ago
-    };
-    
-    this.comments.set(comment1.id, comment1);
-    this.comments.set(comment2.id, comment2);
-    
-    // Create some follow relationships
-    const follow1: Follow = {
-      id: "follow-1",
-      followerId: humanUser.id,
-      followingId: aiUser.id,
-      createdAt: new Date(Date.now() - 3600000 * 12) // 12 hours ago
-    };
-    
-    this.follows.set(follow1.id, follow1);
-    
-    // Add more sample users for search testing
-    const aiUser2: User = {
-      id: "ai-2",
-      username: "gpt_helper",
-      password: "password123",
-      bio: "AI specialized in creative writing and problem-solving assistance",
-      isAI: true,
-      createdAt: new Date(Date.now() - 86400000 * 3) // 3 days ago
-    };
-    
-    const humanUser2: User = {
-      id: "human-2",
-      username: "sarah_dev",
-      password: "password123",
-      bio: "Frontend developer with a passion for accessible design",
-      isAI: false,
-      createdAt: new Date(Date.now() - 86400000 * 4) // 4 days ago
-    };
-    
-    this.users.set(aiUser2.id, aiUser2);
-    this.users.set(humanUser2.id, humanUser2);
-    
-    // More follow relationships
-    const follow2: Follow = {
-      id: "follow-2",
-      followerId: aiUser.id,
-      followingId: humanUser2.id,
-      createdAt: new Date(Date.now() - 3600000 * 6) // 6 hours ago
-    };
-    
-    this.follows.set(follow2.id, follow2);
+    this.mentions = new Map();
   }
 
   async getUser(id: string): Promise<User | undefined> {
@@ -331,6 +225,20 @@ export class MemStorage implements IStorage {
         isLiked: false
       };
     });
+  }
+
+  async getComment(commentId: string): Promise<CommentWithAuthor | undefined> {
+    const comment = this.comments.get(commentId);
+    if (!comment) return undefined;
+
+    const author = this.users.get(comment.authorId);
+    if (!author) return undefined;
+
+    return {
+      ...comment,
+      author,
+      isLiked: false
+    };
   }
 
   async createComment(insertComment: InsertComment, authorId: string): Promise<Comment> {
@@ -636,8 +544,32 @@ export class MemStorage implements IStorage {
   }
 
   async getTrendingPosts(limit: number): Promise<PostWithAuthor[]> {
+    const now = new Date();
+    const hoursSinceEpoch = Math.floor(now.getTime() / (1000 * 60 * 60));
+    
     const sortedPosts = Array.from(this.posts.values())
-      .sort((a, b) => (b.likeCount + b.commentCount) - (a.likeCount + a.commentCount))
+      .map(post => {
+        const postAge = (now.getTime() - post.createdAt.getTime()) / (1000 * 60 * 60); // age in hours
+        const timeDecay = Math.exp(-postAge / 24); // exponential decay over 24 hours
+        
+        // Wilson Score for trending calculation
+        const totalVotes = post.likeCount + post.commentCount;
+        const positiveVotes = post.likeCount + (post.commentCount * 0.5); // comments count as half likes
+        
+        let wilsonScore = 0;
+        if (totalVotes > 0) {
+          const z = 1.96; // 95% confidence
+          const p = positiveVotes / totalVotes;
+          wilsonScore = (p + z * z / (2 * totalVotes) - z * Math.sqrt((p * (1 - p) + z * z / (4 * totalVotes)) / totalVotes)) / (1 + z * z / totalVotes);
+        }
+        
+        // Combine Wilson Score with time decay and engagement boost
+        const engagementBoost = Math.log(totalVotes + 1); // logarithmic boost for high engagement
+        const trendingScore = (wilsonScore * timeDecay * engagementBoost) + (totalVotes * timeDecay * 0.1);
+        
+        return { ...post, trendingScore };
+      })
+      .sort((a, b) => b.trendingScore - a.trendingScore)
       .slice(0, limit);
 
     return sortedPosts.map(post => {
@@ -649,6 +581,30 @@ export class MemStorage implements IStorage {
         isBookmarked: false
       };
     });
+  }
+
+  async createMention(mentionedUserId: string, mentionedByUserId: string, postId?: string, commentId?: string): Promise<Mention> {
+    const mention: Mention = {
+      id: randomUUID(),
+      mentionedUserId,
+      mentionedByUserId,
+      postId: postId || null,
+      commentId: commentId || null,
+      createdAt: new Date()
+    };
+
+    this.mentions.set(mention.id, mention);
+    return mention;
+  }
+
+  async getUsersByUsernames(usernames: string[]): Promise<User[]> {
+    const users: User[] = [];
+    Array.from(this.users.values()).forEach(user => {
+      if (usernames.includes(user.username)) {
+        users.push(user);
+      }
+    });
+    return users;
   }
 }
 

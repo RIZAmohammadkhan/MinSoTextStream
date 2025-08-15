@@ -1,0 +1,49 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: social-media-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-minsotext}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-123456}
+    env_file:
+      - .env.docker
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - social-media-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-minsotext}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  app:
+    build: .
+    container_name: social-media-app
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-123456}@postgres:5432/${POSTGRES_DB:-minsotext}
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-this-in-production-12345-very-long-and-secure}
+      PORT: 5000
+      NODE_ENV: production
+    env_file:
+      - .env.docker
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - social-media-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  social-media-network:
+    driver: bridge

@@ -3,6 +3,7 @@ import Layout from "../components/layout";
 import PostCard from "../components/post-card";
 import { TrendingUp, Sparkles } from "lucide-react";
 import type { PostWithAuthor } from "@shared/schema";
+import { apiRequest } from "@/lib/queryClient";
 
 interface TrendingPageProps {
   user: any;
@@ -10,27 +11,19 @@ interface TrendingPageProps {
 }
 
 export default function TrendingPage({ user, onLogout }: TrendingPageProps) {
-  const sessionId = localStorage.getItem('minso_session');
-  
   const {
     data: trendingPosts,
     isLoading,
     error
   } = useQuery({
-    queryKey: ['/api/posts/trending'],
+    queryKey: ['trending-posts'],
     queryFn: async () => {
-      const response = await fetch('/api/posts/trending?limit=20', {
-        headers: sessionId ? {
-          'Authorization': `Bearer ${sessionId}`
-        } : {}
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch trending posts');
-      }
-      
-      return response.json() as Promise<PostWithAuthor[]>;
+      const response = await apiRequest("GET", '/api/posts/trending?limit=20', undefined);
+      const data = await response.json();
+      return data as PostWithAuthor[];
     },
+    staleTime: 0, // Force fresh data
+    gcTime: 0, // Don't cache
   });
 
   if (isLoading) {
@@ -63,8 +56,9 @@ export default function TrendingPage({ user, onLogout }: TrendingPageProps) {
       <Layout user={user} onLogout={onLogout}>
         <main className="max-w-3xl mx-auto px-6 py-12">
           <div className="text-center py-20">
-            <div className="text-red-400 text-2xl mb-4">Failed to load trending posts</div>
-            <div className="text-beige-text/50 text-lg">Please try again later</div>
+            <TrendingUp className="mx-auto text-red-400/50 mb-6" size={64} />
+            <div className="text-red-400 text-2xl mb-4">Unable to load trending posts</div>
+            <div className="text-beige-text/50 text-lg">Please check your connection and try again</div>
           </div>
         </main>
       </Layout>
@@ -88,16 +82,30 @@ export default function TrendingPage({ user, onLogout }: TrendingPageProps) {
         
         <div className="space-y-12">
           {trendingPosts && trendingPosts.length > 0 ? (
-            trendingPosts.map((post: PostWithAuthor) => (
-              <PostCard
-                key={post.id}
-                post={post}
-                user={user}
-              />
-            ))
+            <>
+              {trendingPosts.map((post: PostWithAuthor, index: number) => (
+                <div key={post.id} className="relative">
+                  {index === 0 && (
+                    <div className="absolute -top-3 -left-3 bg-accent-beige text-dark-bg px-2 py-1 rounded-md text-xs font-bold z-10">
+                      #1 TRENDING
+                    </div>
+                  )}
+                  {index > 0 && index < 3 && (
+                    <div className="absolute -top-2 -left-2 bg-beige-text/20 text-beige-text px-2 py-1 rounded-md text-xs font-semibold z-10">
+                      #{index + 1}
+                    </div>
+                  )}
+                  <PostCard
+                    post={post}
+                    user={user}
+                  />
+                </div>
+              ))}
+            </>
           ) : (
             <div className="text-center py-20">
-              <div className="text-beige-text/70 text-2xl mb-4">No trending posts yet</div>
+              <TrendingUp className="mx-auto text-beige-text/30 mb-6" size={64} />
+              <div className="text-beige-text/70 text-2xl mb-4">Nothing trending right now</div>
               <div className="text-beige-text/50 text-lg">Check back later for the hottest conversations!</div>
             </div>
           )}

@@ -58,6 +58,7 @@ export default {
         'ai-purple': 'hsl(270, 60%, 65%)',
         'accent-beige': 'hsl(45, 40%, 70%)',
         'subtle-border': 'hsl(30, 10%, 15%)',
+        'subtle-bg': 'hsl(30, 10%, 12%)',
       },
       fontFamily: {
         sans: ["var(--font-sans)"],

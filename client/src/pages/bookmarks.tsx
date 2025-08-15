@@ -64,8 +64,9 @@ export default function BookmarksPage({ user, onLogout }: BookmarksPageProps) {
       <Layout user={user} onLogout={onLogout}>
         <main className="max-w-3xl mx-auto px-6 py-12">
           <div className="text-center py-20">
-            <div className="text-red-400 text-2xl mb-4">Failed to load bookmarks</div>
-            <div className="text-beige-text/50 text-lg">Please try again later</div>
+            <Bookmark className="mx-auto text-red-400/50 mb-6" size={64} />
+            <div className="text-red-400 text-2xl mb-4">Unable to load bookmarks</div>
+            <div className="text-beige-text/50 text-lg">Please check your connection and try again</div>
           </div>
         </main>
       </Layout>
@@ -98,6 +99,7 @@ export default function BookmarksPage({ user, onLogout }: BookmarksPageProps) {
             ))
           ) : (
             <div className="text-center py-20">
+              <Bookmark className="mx-auto text-beige-text/30 mb-6" size={64} />
               <div className="text-beige-text/70 text-2xl mb-4">No bookmarks yet</div>
               <div className="text-beige-text/50 text-lg">Start bookmarking posts to save them for later!</div>
             </div>

@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import Layout from "../components/layout";
 import { Bell, Heart, MessageCircle, UserPlus, Bookmark, Check, CheckCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ export default function NotificationsPage({ user, onLogout }: NotificationsPageP
   const sessionId = localStorage.getItem('minso_session');
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
   
   const {
     data: notifications,
@@ -130,6 +132,32 @@ export default function NotificationsPage({ user, onLogout }: NotificationsPageP
 
   const unreadCount = notifications?.filter(n => !n.read).length || 0;
 
+  const handleNotificationClick = (notification: Notification) => {
+    // Mark as read first
+    if (!notification.read) {
+      markAsReadMutation.mutate(notification.id);
+    }
+
+    // Navigate based on notification type
+    switch (notification.type) {
+      case 'like':
+      case 'comment':
+      case 'mention':
+        if (notification.relatedPostId) {
+          setLocation(`/post/${notification.relatedPostId}`);
+        }
+        break;
+      case 'follow':
+        if (notification.relatedUserId) {
+          setLocation(`/profile/${notification.relatedUserId}`);
+        }
+        break;
+      default:
+        // For other notification types, stay on the same page
+        break;
+    }
+  };
+
   if (isLoading) {
     return (
       <Layout user={user} onLogout={onLogout}>
@@ -157,8 +185,9 @@ export default function NotificationsPage({ user, onLogout }: NotificationsPageP
       <Layout user={user} onLogout={onLogout}>
         <main className="max-w-3xl mx-auto px-6 py-12">
           <div className="text-center py-20">
-            <div className="text-red-400 text-2xl mb-4">Failed to load notifications</div>
-            <div className="text-beige-text/50 text-lg">Please try again later</div>
+            <Bell className="mx-auto text-red-400/50 mb-6" size={64} />
+            <div className="text-red-400 text-2xl mb-4">Unable to load notifications</div>
+            <div className="text-beige-text/50 text-lg">Please check your connection and try again</div>
           </div>
         </main>
       </Layout>
@@ -200,10 +229,11 @@ export default function NotificationsPage({ user, onLogout }: NotificationsPageP
             notifications.map((notification: Notification) => (
               <div
                 key={notification.id}
-                className={`border rounded-lg p-6 transition-colors duration-200 ${
+                onClick={() => handleNotificationClick(notification)}
+                className={`border rounded-lg p-6 transition-colors duration-200 cursor-pointer hover:border-accent-beige/50 ${
                   notification.read 
-                    ? 'border-subtle-border bg-dark-bg' 
-                    : 'border-accent-beige/30 bg-accent-beige/5'
+                    ? 'border-subtle-border bg-dark-bg hover:bg-accent-beige/5' 
+                    : 'border-accent-beige/30 bg-accent-beige/5 hover:bg-accent-beige/10'
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -230,7 +260,10 @@ export default function NotificationsPage({ user, onLogout }: NotificationsPageP
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => markAsReadMutation.mutate(notification.id)}
+                      onClick={(e) => {
+                        e.stopPropagation(); // Prevent triggering the notification click
+                        markAsReadMutation.mutate(notification.id);
+                      }}
                       disabled={markAsReadMutation.isPending}
                       className="text-beige-text/60 hover:text-beige-text"
                       title="Mark as read"
@@ -243,7 +276,8 @@ export default function NotificationsPage({ user, onLogout }: NotificationsPageP
             ))
           ) : (
             <div className="text-center py-20">
-              <div className="text-beige-text/70 text-2xl mb-4">No notifications yet</div>
+              <Bell className="mx-auto text-beige-text/30 mb-6" size={64} />
+              <div className="text-beige-text/70 text-2xl mb-4">You have no notifications</div>
               <div className="text-beige-text/50 text-lg">We'll let you know when something happens!</div>
             </div>
           )}

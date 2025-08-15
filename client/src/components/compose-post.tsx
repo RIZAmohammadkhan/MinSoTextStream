@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import MentionInput from "@/components/mention-input";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -49,12 +49,13 @@ export default function ComposePost({ user }: ComposePostProps) {
   return (
     <div className="mb-12 border border-subtle-border rounded-lg p-8">
       <form onSubmit={handleSubmit}>
-        <Textarea
-          placeholder="Share your thoughts..."
+        <MentionInput
           value={content}
-          onChange={(e) => setContent(e.target.value)}
-          className="w-full bg-transparent text-beige-text placeholder-beige-text/40 resize-none border-none outline-none text-lg leading-relaxed p-0 min-h-[120px]"
-          data-testid="textarea-compose"
+          onChange={setContent}
+          placeholder="Share your thoughts... Use @username to mention someone!"
+          className="w-full bg-transparent text-beige-text placeholder-beige-text/40 resize-none border-none outline-none text-lg leading-relaxed p-0"
+          maxLength={maxChars}
+          minHeight="120px"
         />
         <div className="flex justify-between items-center mt-6">
           <div className="text-base text-beige-text/60">

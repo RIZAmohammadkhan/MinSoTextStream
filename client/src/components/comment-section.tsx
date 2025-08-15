@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import MentionInput from "@/components/mention-input";
+import MentionText from "@/components/mention-text";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -14,6 +15,7 @@ interface CommentSectionProps {
 
 export default function CommentSection({ postId, user }: CommentSectionProps) {
   const [newComment, setNewComment] = useState("");
+  const [commentAnimations, setCommentAnimations] = useState<{[key: string]: 'like' | 'unlike' | null}>({});
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -49,10 +51,32 @@ export default function CommentSection({ postId, user }: CommentSectionProps) {
       const response = await apiRequest("POST", `/api/comments/${commentId}/like`, {});
       return response.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/posts', postId, 'comments'] });
+    onMutate: (commentId: string) => {
+      // Find the comment to check its current like state
+      const comment = comments?.find((c: CommentWithAuthor) => c.id === commentId);
+      if (comment) {
+        setCommentAnimations(prev => ({
+          ...prev,
+          [commentId]: comment.isLiked ? 'unlike' : 'like'
+        }));
+      }
     },
-    onError: (error: any) => {
+    onSuccess: (data, commentId) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/posts', postId, 'comments'] });
+      
+      // Clear animation after it completes
+      setTimeout(() => {
+        setCommentAnimations(prev => ({
+          ...prev,
+          [commentId]: null
+        }));
+      }, 600);
+    },
+    onError: (error: any, commentId) => {
+      setCommentAnimations(prev => ({
+        ...prev,
+        [commentId]: null
+      }));
       toast({
         title: "Error",
         description: error.message || "Failed to toggle like",
@@ -140,23 +164,33 @@ export default function CommentSection({ postId, user }: CommentSectionProps) {
             className="text-base leading-relaxed text-beige-text mb-4 whitespace-pre-wrap"
             data-testid={`text-comment-content-${comment.id}`}
           >
-            {comment.content}
+            <MentionText content={comment.content} />
           </div>
           
           <Button
             variant="ghost"
             size="sm"
             onClick={() => likeCommentMutation.mutate(comment.id)}
-            disabled={likeCommentMutation.isPending}
-            className="flex items-center space-x-2 text-beige-text/60 hover:text-beige-text transition-colors duration-200 p-0 h-auto"
+            disabled={likeCommentMutation.isPending || comment.author.id === user?.id}
+            className={`flex items-center space-x-2 transition-colors duration-200 p-0 h-auto ${
+              comment.author.id === user?.id 
+                ? 'text-beige-text/30 cursor-not-allowed' 
+                : 'text-beige-text/60 hover:text-beige-text'
+            }`}
             data-testid={`button-like-comment-${comment.id}`}
+            title={comment.author.id === user?.id ? "You cannot like your own comment" : "Like this comment"}
           >
             <Heart 
               size={14} 
-              className={`transition-all duration-200 ${
+              className={`transition-all duration-300 ease-out ${
                 comment.isLiked 
-                  ? "fill-red-500 text-red-500 scale-110" 
-                  : "hover:text-red-400"
+                  ? "fill-red-400 text-red-400" 
+                  : comment.author.id === user?.id 
+                    ? "text-beige-text/30" 
+                    : "hover:text-red-400 hover:scale-105"
+              } ${
+                commentAnimations[comment.id] === 'like' ? 'heart-like-animation' : 
+                commentAnimations[comment.id] === 'unlike' ? 'heart-unlike-animation' : ''
               }`}
             />
             <span className="text-sm">{comment.likeCount}</span>
@@ -167,14 +201,16 @@ export default function CommentSection({ postId, user }: CommentSectionProps) {
       {/* Add Comment Form */}
       <div className="ml-6 mt-6">
         <form onSubmit={handleSubmitComment}>
-          <Textarea
-            placeholder="Add a thoughtful response..."
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
-            className="w-full bg-transparent text-beige-text placeholder-beige-text/50 resize-none border border-subtle-border rounded p-4 text-base leading-relaxed"
-            rows={3}
-            data-testid={`textarea-comment-${postId}`}
-          />
+          <div className="border border-subtle-border rounded p-4">
+            <MentionInput
+              value={newComment}
+              onChange={setNewComment}
+              placeholder="Add a thoughtful response... Use @username to mention someone!"
+              className="w-full bg-transparent text-beige-text placeholder-beige-text/50 resize-none border-none outline-none text-base leading-relaxed p-0"
+              minHeight="72px"
+              maxLength={1000}
+            />
+          </div>
           <div className="flex justify-end mt-3">
             <Button
               type="submit"

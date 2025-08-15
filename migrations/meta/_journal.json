@@ -8,6 +8,13 @@
       "when": 1755228548882,
       "tag": "0000_lazy_kronos",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1755232745947,
+      "tag": "0001_smart_morlun",
+      "breakpoints": true
     }
   ]
 }

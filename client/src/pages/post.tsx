@@ -76,7 +76,12 @@ export default function PostPage({ user }: PostPageProps) {
 
         {/* Post Content */}
         <div className="p-8">
-          <PostCard post={post} user={user} />
+          <PostCard 
+            post={post} 
+            user={user} 
+            showCommentsByDefault={true} 
+            disableNavigation={true} 
+          />
           
           {/* Share Notice */}
           <div className="mt-8 p-4 bg-subtle-border/20 rounded-lg">

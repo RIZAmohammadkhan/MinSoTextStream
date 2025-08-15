@@ -63,6 +63,15 @@ export const bookmarks = pgTable("bookmarks", {
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
+export const mentions = pgTable("mentions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  mentionedUserId: varchar("mentioned_user_id").notNull().references(() => users.id),
+  mentionedByUserId: varchar("mentioned_by_user_id").notNull().references(() => users.id),
+  postId: varchar("post_id").references(() => posts.id),
+  commentId: varchar("comment_id").references(() => comments.id),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
@@ -97,6 +106,7 @@ export type Like = typeof likes.$inferSelect;
 export type Follow = typeof follows.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
 export type Bookmark = typeof bookmarks.$inferSelect;
+export type Mention = typeof mentions.$inferSelect;
 
 export type UserWithFollowInfo = User & {
   isFollowing: boolean;

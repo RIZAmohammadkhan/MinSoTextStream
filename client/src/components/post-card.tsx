@@ -1,11 +1,13 @@
 import { forwardRef, useState } from "react";
-import { Heart, MessageCircle, MoreHorizontal, Trash2, Bookmark, Edit3, Share } from "lucide-react";
+import { Heart, MessageCircle, MoreHorizontal, Trash2, Bookmark, Edit3, Share, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import CommentSection from "@/components/comment-section";
+import MentionText from "@/components/mention-text";
 import type { PostWithAuthor } from "@shared/schema";
+import { useLocation } from "wouter";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,23 +19,51 @@ import {
 interface PostCardProps {
   post: PostWithAuthor;
   user: any;
+  showCommentsByDefault?: boolean;
+  disableNavigation?: boolean;
 }
 
-const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user }, ref) => {
-  const [showComments, setShowComments] = useState(false);
+const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user, showCommentsByDefault = false, disableNavigation = false }, ref) => {
+  const [showComments, setShowComments] = useState(showCommentsByDefault);
+  const [isLiking, setIsLiking] = useState(false);
+  const [heartAnimation, setHeartAnimation] = useState<'like' | 'unlike' | null>(null);
+  const [bookmarkAnimation, setBookmarkAnimation] = useState<'save' | 'remove' | null>(null);
+  const [lastTap, setLastTap] = useState(0);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, navigate] = useLocation();
 
   const likePostMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("POST", `/api/posts/${post.id}/like`, {});
-      return response.json();
+      try {
+        const response = await apiRequest("POST", `/api/posts/${post.id}/like`, {});
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+      } catch (error) {
+        console.error('Like request failed:', error);
+        throw error;
+      }
+    },
+    onMutate: () => {
+      setIsLiking(true);
+      // Trigger animation based on current state
+      setHeartAnimation(post.isLiked ? 'unlike' : 'like');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
       queryClient.invalidateQueries({ queryKey: ['/api/bookmarks'] });
+      queryClient.invalidateQueries({ queryKey: ['trending-posts'] });
+      setIsLiking(false);
+      
+      // Clear animation after it completes
+      setTimeout(() => setHeartAnimation(null), 600);
     },
     onError: (error: any) => {
+      setIsLiking(false);
+      setHeartAnimation(null);
+      console.error('Like mutation error:', error);
       toast({
         title: "Error",
         description: error.message || "Failed to toggle like",
@@ -50,6 +80,7 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user }, ref) =>
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
       queryClient.invalidateQueries({ queryKey: ['/api/bookmarks'] });
+      queryClient.invalidateQueries({ queryKey: ['trending-posts'] });
       toast({
         title: "Success",
         description: "Post deleted successfully",
@@ -69,11 +100,20 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user }, ref) =>
       const response = await apiRequest("POST", `/api/posts/${post.id}/bookmark`, {});
       return response.json();
     },
+    onMutate: () => {
+      // Trigger animation based on current state
+      setBookmarkAnimation(post.isBookmarked ? 'remove' : 'save');
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/posts'] });
       queryClient.invalidateQueries({ queryKey: ['/api/bookmarks'] });
+      queryClient.invalidateQueries({ queryKey: ['trending-posts'] });
+      
+      // Clear animation after it completes
+      setTimeout(() => setBookmarkAnimation(null), 600);
     },
     onError: (error: any) => {
+      setBookmarkAnimation(null);
       toast({
         title: "Error",
         description: error.message || "Failed to toggle bookmark",
@@ -128,6 +168,32 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user }, ref) =>
     }
   };
 
+  const handleDoubleTap = () => {
+    const now = Date.now();
+    const DOUBLE_TAP_DELAY = 300;
+    
+    if (now - lastTap < DOUBLE_TAP_DELAY) {
+      // Double tap detected - like the post if user can like it
+      if (post.author.id !== user?.id && !isLiking) {
+        likePostMutation.mutate();
+      }
+    }
+    setLastTap(now);
+  };
+
+  const handlePostClick = (e: React.MouseEvent) => {
+    // Don't navigate if navigation is disabled or clicking on buttons or interactive elements
+    if (disableNavigation) return;
+    
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('[role="button"]') || target.closest('a')) {
+      return;
+    }
+    
+    // Navigate to post detail page
+    navigate(`/post/${post.id}`);
+  };
+
   const formatDateTime = (date: Date | string) => {
     const postDate = new Date(date);
     const now = new Date();
@@ -153,9 +219,19 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user }, ref) =>
   return (
     <article 
       ref={ref}
-      className="border border-subtle-border rounded-lg p-8 hover:border-subtle-border/60 transition-colors duration-200 mb-8"
+      className={`border border-subtle-border rounded-lg p-8 hover:border-subtle-border/60 transition-all duration-200 mb-8 group relative ${
+        !disableNavigation ? 'cursor-pointer hover:bg-dark-bg/50' : ''
+      }`}
       data-testid={`post-${post.id}`}
+      onClick={disableNavigation ? undefined : handlePostClick}
+      title={disableNavigation ? undefined : "Click to view post details"}
     >
+      {/* Hover indicator - only show if navigation is enabled */}
+      {!disableNavigation && (
+        <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+          <ExternalLink size={16} className="text-beige-text/40" />
+        </div>
+      )}
       <div className="flex items-start space-x-4">
         <div className="flex-1">
           {/* User Info */}
@@ -182,7 +258,7 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user }, ref) =>
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="ghost"
-                    className="h-8 w-8 p-0 text-beige-text hover:text-white"
+                    className="post-card-button h-8 w-8 p-0 text-beige-text hover:text-beige-text/80 hover:bg-transparent"
                     data-testid={`button-post-menu-${post.id}`}
                   >
                     <MoreHorizontal className="h-4 w-4" />
@@ -218,10 +294,12 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user }, ref) =>
           
           {/* Post Content */}
           <div 
-            className="text-lg leading-relaxed mb-8 whitespace-pre-wrap text-beige-text"
+            className="text-lg leading-relaxed mb-8 whitespace-pre-wrap text-beige-text cursor-pointer select-none"
             data-testid={`text-content-${post.id}`}
+            onClick={handleDoubleTap}
+            style={{ userSelect: 'none' }}
           >
-            {post.content}
+            <MentionText content={post.content} />
           </div>
           
           {/* Post Actions */}
@@ -231,26 +309,42 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user }, ref) =>
                 variant="ghost"
                 size="sm"
                 onClick={() => likePostMutation.mutate()}
-                disabled={likePostMutation.isPending}
-                className="flex items-center space-x-2 text-beige-text/60 hover:text-beige-text transition-colors duration-200 p-0 h-auto"
+                disabled={likePostMutation.isPending || post.author.id === user?.id}
+                className={`post-card-button group flex items-center space-x-2 transition-colors duration-200 p-0 h-auto hover:bg-transparent ${
+                  post.author.id === user?.id 
+                    ? 'cursor-not-allowed' 
+                    : ''
+                }`}
                 data-testid={`button-like-${post.id}`}
+                title={post.author.id === user?.id ? "You cannot like your own post" : "Like this post"}
               >
                 <Heart 
                   size={18} 
-                  className={`transition-all duration-200 ${
+                  className={`transition-all duration-300 ease-out ${
                     post.isLiked 
-                      ? "fill-red-500 text-red-500 scale-110" 
-                      : "hover:text-red-400"
+                      ? "fill-red-500 text-red-500 stroke-red-500 stroke-2 scale-110" 
+                      : post.author.id === user?.id 
+                        ? "text-beige-text/30 fill-transparent stroke-beige-text/30" 
+                        : "text-beige-text/60 fill-transparent stroke-beige-text/60 group-hover:text-red-400 group-hover:stroke-red-400 hover:scale-105"
+                  } ${
+                    heartAnimation === 'like' ? 'heart-like-animation' : 
+                    heartAnimation === 'unlike' ? 'heart-unlike-animation' : ''
                   }`}
                 />
-                <span className="text-sm">{post.likeCount}</span>
+                <span className={`text-sm transition-colors duration-200 ${
+                  post.isLiked 
+                    ? "text-red-500" 
+                    : post.author.id === user?.id 
+                      ? "text-beige-text/30"
+                      : "text-beige-text/60 group-hover:text-red-400"
+                }`}>{post.likeCount}</span>
               </Button>
               
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setShowComments(!showComments)}
-                className="flex items-center space-x-2 text-beige-text/60 hover:text-beige-text transition-colors duration-200 p-0 h-auto"
+                className="post-card-button flex items-center space-x-2 text-beige-text/60 hover:text-beige-text hover:bg-transparent transition-colors duration-200 p-0 h-auto"
                 data-testid={`button-comments-${post.id}`}
               >
                 <MessageCircle size={18} />
@@ -264,16 +358,19 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user }, ref) =>
                 size="sm"
                 onClick={() => bookmarkPostMutation.mutate()}
                 disabled={bookmarkPostMutation.isPending}
-                className="text-beige-text/60 hover:text-beige-text transition-colors duration-200 p-0 h-auto"
+                className="post-card-button text-beige-text/60 hover:text-beige-text hover:bg-transparent transition-colors duration-200 p-0 h-auto"
                 data-testid={`button-bookmark-${post.id}`}
                 title={post.isBookmarked ? "Remove bookmark" : "Bookmark post"}
               >
                 <Bookmark 
                   size={18} 
-                  className={`transition-all duration-200 ${
+                  className={`transition-all duration-300 ease-out ${
                     post.isBookmarked 
-                      ? "fill-yellow-500 text-yellow-500 scale-110" 
-                      : "hover:text-yellow-400"
+                      ? "fill-yellow-500 text-yellow-500 stroke-yellow-500 stroke-2 scale-110" 
+                      : "text-beige-text/60 fill-transparent stroke-beige-text/60 hover:text-yellow-400 hover:stroke-yellow-400 hover:scale-105"
+                  } ${
+                    bookmarkAnimation === 'save' ? 'bookmark-save-animation' : 
+                    bookmarkAnimation === 'remove' ? 'bookmark-remove-animation' : ''
                   }`}
                 />
               </Button>
@@ -282,7 +379,7 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user }, ref) =>
                 variant="ghost"
                 size="sm"
                 onClick={copyPostLink}
-                className="text-beige-text/60 hover:text-beige-text transition-colors duration-200 p-0 h-auto"
+                className="post-card-button text-beige-text/60 hover:text-beige-text hover:bg-transparent transition-colors duration-200 p-0 h-auto"
                 data-testid={`button-share-${post.id}`}
                 title="Copy post link"
               >
@@ -295,7 +392,17 @@ const PostCard = forwardRef<HTMLElement, PostCardProps>(({ post, user }, ref) =>
       
       {/* Comments Section */}
       {showComments && (
-        <CommentSection postId={post.id} user={user} />
+        <div className={showCommentsByDefault ? "mt-8 pt-8 border-t border-subtle-border/30" : "mt-8"}>
+          {showCommentsByDefault && (
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold text-beige-text flex items-center">
+                <MessageCircle size={18} className="mr-2" />
+                Comments
+              </h3>
+            </div>
+          )}
+          <CommentSection postId={post.id} user={user} />
+        </div>
       )}
     </article>
   );

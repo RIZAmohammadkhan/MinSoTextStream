@@ -3,7 +3,14 @@ import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { insertUserSchema, insertPostSchema, insertCommentSchema } from "@shared/schema";
+import { extractMentions, createMentionNotificationMessage } from "@shared/mention-utils";
 import { z } from "zod";
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
+
+// JWT secret - in production, use a proper environment variable
+const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production';
+const JWT_EXPIRES_IN = '24h';
 
 // Simple session store for demo purposes - in production, use Redis or database
 const sessions = new Map<string, { userId: string; username: string; expiresAt: Date }>();
@@ -18,21 +25,38 @@ setInterval(() => {
   });
 }, 60000); // Clean up every minute
 
-// Helper function to hash passwords (simple for demo - use bcrypt in production)
-function hashPassword(password: string): string {
-  // For demo purposes, just return the password
-  // In production, use: return bcrypt.hashSync(password, 10);
-  return password;
+// Helper function to hash passwords using bcrypt
+async function hashPassword(password: string): Promise<string> {
+  const saltRounds = 12; // Higher than default for better security
+  return bcrypt.hash(password, saltRounds);
 }
 
-function verifyPassword(password: string, hash: string): boolean {
-  // For demo purposes, just compare directly
-  // In production, use: return bcrypt.compareSync(password, hash);
-  return password === hash;
+async function verifyPassword(password: string, hash: string): Promise<boolean> {
+  return bcrypt.compare(password, hash);
+}
+
+// Helper function to generate JWT token
+function generateJWT(userId: string, username: string): string {
+  return jwt.sign({ userId, username }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+}
+
+// Helper function to verify JWT token
+function verifyJWT(token: string): { userId: string; username: string } | null {
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    return { userId: decoded.userId, username: decoded.username };
+  } catch (error) {
+    return null;
+  }
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
+  
+  // Health check endpoint
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
   
   // WebSocket setup
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
@@ -57,10 +81,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Middleware to check authentication
   function requireAuth(req: any, res: any, next: any) {
-    const sessionId = req.headers.authorization?.replace('Bearer ', '');
-    const session = sessionId ? sessions.get(sessionId) : null;
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    const token = authHeader.replace('Bearer ', '');
     
-    if (!session) {
+    // Try JWT first
+    const jwtPayload = verifyJWT(token);
+    if (jwtPayload) {
+      req.user = jwtPayload;
+      return next();
+    }
+    
+    // Fallback to session-based auth for backward compatibility
+    const session = sessions.get(token);
+    if (!session || session.expiresAt < new Date()) {
       return res.status(401).json({ message: 'Unauthorized' });
     }
     
@@ -84,19 +121,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Hash password before storing
+      const hashedPassword = await hashPassword(userData.password);
       const hashedUserData = {
         ...userData,
-        password: hashPassword(userData.password)
+        password: hashedPassword
       };
       
       const user = await storage.createUser(hashedUserData);
+      
+      // Generate JWT token
+      const jwtToken = generateJWT(user.id, user.username);
+      
+      // Also create session for backward compatibility
       const sessionId = crypto.randomUUID();
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
       sessions.set(sessionId, { userId: user.id, username: user.username, expiresAt });
       
       res.json({ 
-        user: { id: user.id, username: user.username, bio: user.bio, isAI: user.isAI },
-        sessionId 
+        user: { id: user.id, username: user.username, bio: user.bio, isAI: user.isAI, createdAt: user.createdAt },
+        sessionId: jwtToken, // Use JWT as sessionId for compatibility
+        token: jwtToken
       });
     } catch (error: any) {
       console.error('Registration error:', error);
@@ -143,7 +187,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      const passwordValid = verifyPassword(password, user.password);
+      const passwordValid = await verifyPassword(password, user.password);
       console.log('Password valid:', passwordValid);
       
       if (!passwordValid) {
@@ -154,14 +198,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
+      // Generate JWT token
+      const jwtToken = generateJWT(user.id, user.username);
+      
+      // Also create session for backward compatibility
       const sessionId = crypto.randomUUID();
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
       sessions.set(sessionId, { userId: user.id, username: user.username, expiresAt });
       
       console.log('Login successful for:', username);
       res.json({ 
-        user: { id: user.id, username: user.username, bio: user.bio, isAI: user.isAI },
-        sessionId 
+        user: { id: user.id, username: user.username, bio: user.bio, isAI: user.isAI, createdAt: user.createdAt },
+        sessionId: jwtToken, // Use JWT as sessionId for compatibility
+        token: jwtToken
       });
     } catch (error) {
       console.error('Login error:', error);
@@ -205,7 +254,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Verify current password
-      if (!verifyPassword(currentPassword, user.password)) {
+      const isValidPassword = await verifyPassword(currentPassword, user.password);
+      if (!isValidPassword) {
         return res.status(401).json({ 
           message: "Invalid current password",
           details: "The current password you entered is incorrect."
@@ -213,7 +263,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Update password
-      const hashedPassword = hashPassword(newPassword);
+      const hashedPassword = await hashPassword(newPassword);
       await storage.updateUser(user.id, { password: hashedPassword });
       
       res.json({ success: true, message: "Password changed successfully" });
@@ -261,20 +311,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const limit = parseInt(req.query.limit as string) || 10;
       const feed = req.query.feed as string; // 'following' or 'discover'
       
-      const sessionId = req.headers.authorization?.replace('Bearer ', '');
-      const session = sessionId ? sessions.get(sessionId) : null;
+      // Get user authentication (same logic as trending posts)
+      const authHeader = req.headers.authorization;
+      let userId: string | null = null;
+      
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.replace('Bearer ', '');
+        
+        // Try JWT first
+        const jwtPayload = verifyJWT(token);
+        if (jwtPayload) {
+          userId = jwtPayload.userId;
+        } else {
+          // Fallback to session-based auth
+          const session = sessions.get(token);
+          if (session && session.expiresAt > new Date()) {
+            userId = session.userId;
+          }
+        }
+      }
       
       let posts;
-      if (feed === 'following' && session) {
-        posts = await storage.getFollowingPosts(session.userId, offset, limit);
+      if (feed === 'following' && userId) {
+        posts = await storage.getFollowingPosts(userId, offset, limit);
       } else {
         posts = await storage.getPosts(offset, limit);
       }
       
       // Get user likes and bookmarks if authenticated
-      if (session) {
-        const userLikes = await storage.getUserLikes(session.userId);
-        const userBookmarks = await storage.getUserBookmarks(session.userId, 0, 1000);
+      if (userId) {
+        const userLikes = await storage.getUserLikes(userId);
+        const userBookmarks = await storage.getUserBookmarks(userId, 0, 1000);
         const bookmarkedPostIds = userBookmarks.map(post => post.id);
         
         posts.forEach(post => {
@@ -289,6 +356,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Trending posts (must be before :postId route)
+  app.get('/api/posts/trending', async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 10;
+      const posts = await storage.getTrendingPosts(limit);
+      
+      // Get user likes if authenticated
+      const authHeader = req.headers.authorization;
+      let userId: string | null = null;
+      
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.replace('Bearer ', '');
+        
+        // Try JWT first
+        const jwtPayload = verifyJWT(token);
+        if (jwtPayload) {
+          userId = jwtPayload.userId;
+        } else {
+          // Fallback to session-based auth
+          const session = sessions.get(token);
+          if (session && session.expiresAt > new Date()) {
+            userId = session.userId;
+          }
+        }
+      }
+      
+      if (userId) {
+        const userLikes = await storage.getUserLikes(userId);
+        const userBookmarks = await storage.getUserBookmarks(userId, 0, 1000);
+        const bookmarkedPostIds = userBookmarks.map(post => post.id);
+        
+        posts.forEach(post => {
+          post.isLiked = userLikes.some(like => like.postId === post.id);
+          post.isBookmarked = bookmarkedPostIds.includes(post.id);
+        });
+      }
+      
+      res.json(posts);
+    } catch (error) {
+      console.error('Get trending posts error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
   // Get individual post by ID (for sharing)
   app.get("/api/posts/:postId", async (req, res) => {
     try {
@@ -299,13 +410,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Post not found" });
       }
       
-      // Get user likes and bookmarks if authenticated
-      const sessionId = req.headers.authorization?.replace('Bearer ', '');
-      const session = sessionId ? sessions.get(sessionId) : null;
+      // Get user authentication (same logic as trending posts)
+      const authHeader = req.headers.authorization;
+      let userId: string | null = null;
       
-      if (session) {
-        const userLikes = await storage.getUserLikes(session.userId);
-        const userBookmarks = await storage.getUserBookmarks(session.userId, 0, 1000);
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.replace('Bearer ', '');
+        
+        // Try JWT first
+        const jwtPayload = verifyJWT(token);
+        if (jwtPayload) {
+          userId = jwtPayload.userId;
+        } else {
+          // Fallback to session-based auth
+          const session = sessions.get(token);
+          if (session && session.expiresAt > new Date()) {
+            userId = session.userId;
+          }
+        }
+      }
+      
+      if (userId) {
+        const userLikes = await storage.getUserLikes(userId);
+        const userBookmarks = await storage.getUserBookmarks(userId, 0, 1000);
         const bookmarkedPostIds = userBookmarks.map(p => p.id);
         
         post.isLiked = userLikes.some(like => like.postId === post.id);
@@ -323,6 +450,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const postData = insertPostSchema.parse(req.body);
       const post = await storage.createPost(postData, req.user.userId);
       
+      // Process mentions in the post content
+      const mentions = extractMentions(postData.content);
+      if (mentions.length > 0) {
+        // Get users that exist with these usernames
+        const mentionedUsers = await storage.getUsersByUsernames(mentions);
+        
+        // Create mentions and notifications for existing users
+        for (const user of mentionedUsers) {
+          if (user.id !== req.user.userId) { // Don't mention yourself
+            // Create mention record
+            await storage.createMention(user.id, req.user.userId, post.id);
+            
+            // Create notification
+            const message = createMentionNotificationMessage(req.user.username, true);
+            await storage.createNotification(
+              user.id,
+              'mention',
+              message,
+              post.id,
+              req.user.userId
+            );
+          }
+        }
+      }
+      
       // Get full post with author for broadcast
       const fullPost = await storage.getPost(post.id);
       
@@ -331,7 +483,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(post);
     } catch (error) {
-      res.status(400).json({ message: "Invalid input" });
+      console.error('Create post error:', error);
+      res.status(400).json({ 
+        message: "Invalid input",
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   });
 
@@ -356,11 +512,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/posts/:postId/like", requireAuth, async (req: any, res) => {
     try {
       const { postId } = req.params;
+      
+      // Check if user is trying to like their own post
+      const post = await storage.getPost(postId);
+      if (post && post.author.id === req.user.userId) {
+        return res.status(400).json({ message: "You cannot like your own post" });
+      }
+      
       const isLiked = await storage.togglePostLike(req.user.userId, postId);
       
       // Create notification for post author if liked
       if (isLiked) {
-        const post = await storage.getPost(postId);
         if (post && post.author.id !== req.user.userId) {
           await storage.createNotification(
             post.author.id,
@@ -373,8 +535,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Broadcast like update
-      const post = await storage.getPost(postId);
-      broadcast({ type: 'POST_LIKED', postId, likeCount: post?.likeCount || 0 });
+      const updatedPost = await storage.getPost(postId);
+      broadcast({ type: 'POST_LIKED', postId, likeCount: updatedPost?.likeCount || 0 });
       
       res.json({ isLiked });
     } catch (error) {
@@ -388,12 +550,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { postId } = req.params;
       const comments = await storage.getCommentsByPostId(postId);
       
-      // Get user likes if authenticated
-      const sessionId = req.headers.authorization?.replace('Bearer ', '');
-      const session = sessionId ? sessions.get(sessionId) : null;
+      // Get user authentication (same logic as trending posts)
+      const authHeader = req.headers.authorization;
+      let userId: string | null = null;
       
-      if (session) {
-        const userLikes = await storage.getUserLikes(session.userId);
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.replace('Bearer ', '');
+        
+        // Try JWT first
+        const jwtPayload = verifyJWT(token);
+        if (jwtPayload) {
+          userId = jwtPayload.userId;
+        } else {
+          // Fallback to session-based auth
+          const session = sessions.get(token);
+          if (session && session.expiresAt > new Date()) {
+            userId = session.userId;
+          }
+        }
+      }
+      
+      if (userId) {
+        const userLikes = await storage.getUserLikes(userId);
         comments.forEach(comment => {
           comment.isLiked = userLikes.some(like => like.commentId === comment.id);
         });
@@ -411,16 +589,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const commentData = insertCommentSchema.parse({ ...req.body, postId });
       const comment = await storage.createComment(commentData, req.user.userId);
       
-      // Create notification for post author
+      // Get the post to notify the author
       const post = await storage.getPost(postId);
+      
+      // Create notification for post author if not commenting on own post
       if (post && post.author.id !== req.user.userId) {
         await storage.createNotification(
           post.author.id,
           'comment',
-          `${req.user.username} commented on your post`,
+          `${req.user.username} replied to your post`,
           postId,
           req.user.userId
         );
+      }
+      
+      // Get all existing comments on this post to notify other commenters
+      const existingComments = await storage.getCommentsByPostId(postId);
+      const uniqueCommenters = new Set<string>();
+      
+      // Collect unique commenter IDs (excluding post author and current user)
+      existingComments.forEach(existingComment => {
+        if (existingComment.author.id !== req.user.userId && 
+            existingComment.author.id !== post?.author.id) {
+          uniqueCommenters.add(existingComment.author.id);
+        }
+      });
+      
+      // Notify all unique commenters about the new reply
+      for (const commenterId of Array.from(uniqueCommenters)) {
+        await storage.createNotification(
+          commenterId,
+          'comment',
+          `${req.user.username} also replied to ${post?.author.username}'s post`,
+          postId,
+          req.user.userId
+        );
+      }
+      
+      // Process mentions in the comment content
+      const mentions = extractMentions(commentData.content);
+      if (mentions.length > 0) {
+        // Get users that exist with these usernames
+        const mentionedUsers = await storage.getUsersByUsernames(mentions);
+        
+        // Create mentions and notifications for existing users
+        for (const user of mentionedUsers) {
+          if (user.id !== req.user.userId) { // Don't mention yourself
+            // Create mention record
+            await storage.createMention(user.id, req.user.userId, undefined, comment.id);
+            
+            // Create notification
+            const message = createMentionNotificationMessage(req.user.username, false);
+            await storage.createNotification(
+              user.id,
+              'mention',
+              message,
+              postId, // Include postId for context
+              req.user.userId
+            );
+          }
+        }
       }
       
       // Get comment with author
@@ -432,22 +660,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(comment);
     } catch (error) {
-      res.status(400).json({ message: "Invalid input" });
+      console.error('Create comment error:', error);
+      res.status(400).json({ 
+        message: "Invalid input",
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   });
 
   app.post("/api/comments/:commentId/like", requireAuth, async (req: any, res) => {
     try {
       const { commentId } = req.params;
+      
+      // Get the comment to check ownership
+      const comment = await storage.getComment(commentId);
+      if (!comment) {
+        return res.status(404).json({ message: "Comment not found" });
+      }
+      
+      // Check if user is trying to like their own comment
+      if (comment.author.id === req.user.userId) {
+        return res.status(400).json({ message: "You cannot like your own comment" });
+      }
+      
       const isLiked = await storage.toggleCommentLike(req.user.userId, commentId);
       
+      // Create notification for comment author if liked
+      if (isLiked) {
+        await storage.createNotification(
+          comment.author.id,
+          'like',
+          `${req.user.username} liked your comment`,
+          comment.postId,
+          req.user.userId
+        );
+      }
+      
       // Get updated comment for broadcast
-      const comments = Array.from((storage as any).comments.values());
-      const comment = comments.find((c: any) => c.id === commentId) as any;
-      broadcast({ type: 'COMMENT_LIKED', commentId, likeCount: comment?.likeCount || 0 });
+      const updatedComment = await storage.getComment(commentId);
+      broadcast({ type: 'COMMENT_LIKED', commentId, likeCount: updatedComment?.likeCount || 0 });
       
       res.json({ isLiked });
     } catch (error) {
+      console.error('Comment like error:', error);
       res.status(400).json({ message: "Failed to toggle like" });
     }
   });
@@ -464,6 +719,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(users);
     } catch (error) {
       console.error('Search users error:', error);
+      res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
+  // Search users for mentions (simpler endpoint)
+  app.get('/api/users/mentions', requireAuth, async (req: any, res) => {
+    try {
+      const { q: query } = req.query;
+      
+      if (!query || typeof query !== 'string') {
+        return res.status(400).json({ message: 'Query parameter is required' });
+      }
+
+      const users = await storage.searchUsers(query, req.user.userId, 10);
+      
+      // Return simplified user data for mentions
+      const mentionUsers = users.map(user => ({
+        id: user.id,
+        username: user.username,
+        isAI: user.isAI
+      }));
+      
+      res.json(mentionUsers);
+    } catch (error) {
+      console.error('Search mentions error:', error);
       res.status(500).json({ message: 'Internal server error' });
     }
   });
@@ -579,13 +859,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const posts = await storage.getUserPosts(userId, offset, limit);
       
-      // Get user likes if authenticated
-      const sessionId = req.headers.authorization?.replace('Bearer ', '');
-      const session = sessionId ? sessions.get(sessionId) : null;
+      // Get user authentication (same logic as trending posts)
+      const authHeader = req.headers.authorization;
+      let currentUserId: string | null = null;
       
-      if (session) {
-        const userLikes = await storage.getUserLikes(session.userId);
-        const userBookmarks = await storage.getUserBookmarks(session.userId, 0, 1000);
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.replace('Bearer ', '');
+        
+        // Try JWT first
+        const jwtPayload = verifyJWT(token);
+        if (jwtPayload) {
+          currentUserId = jwtPayload.userId;
+        } else {
+          // Fallback to session-based auth
+          const session = sessions.get(token);
+          if (session && session.expiresAt > new Date()) {
+            currentUserId = session.userId;
+          }
+        }
+      }
+      
+      if (currentUserId) {
+        const userLikes = await storage.getUserLikes(currentUserId);
+        const userBookmarks = await storage.getUserBookmarks(currentUserId, 0, 1000);
         const bookmarkedPostIds = userBookmarks.map(post => post.id);
         
         posts.forEach(post => {
@@ -699,34 +995,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ count });
     } catch (error) {
       console.error('Get unread notification count error:', error);
-      res.status(500).json({ message: 'Internal server error' });
-    }
-  });
-
-  // Trending posts
-  app.get('/api/posts/trending', async (req, res) => {
-    try {
-      const limit = parseInt(req.query.limit as string) || 10;
-      const posts = await storage.getTrendingPosts(limit);
-      
-      // Get user likes if authenticated
-      const sessionId = req.headers.authorization?.replace('Bearer ', '');
-      const session = sessionId ? sessions.get(sessionId) : null;
-      
-      if (session) {
-        const userLikes = await storage.getUserLikes(session.userId);
-        const userBookmarks = await storage.getUserBookmarks(session.userId, 0, 1000);
-        const bookmarkedPostIds = userBookmarks.map(post => post.id);
-        
-        posts.forEach(post => {
-          post.isLiked = userLikes.some(like => like.postId === post.id);
-          post.isBookmarked = bookmarkedPostIds.includes(post.id);
-        });
-      }
-      
-      res.json(posts);
-    } catch (error) {
-      console.error('Get trending posts error:', error);
       res.status(500).json({ message: 'Internal server error' });
     }
   });

@@ -108,7 +108,7 @@ export default function Home({ user, onLogout }: HomeProps) {
             className={`flex-1 px-6 py-3 rounded-md font-medium transition-colors duration-200 ${
               feedType === 'discover'
                 ? 'bg-accent-beige text-dark-bg'
-                : 'text-beige-text hover:text-white'
+                : 'text-beige-text hover:text-beige-text/80'
             }`}
             data-testid="tab-discover"
           >
@@ -119,7 +119,7 @@ export default function Home({ user, onLogout }: HomeProps) {
             className={`flex-1 px-6 py-3 rounded-md font-medium transition-colors duration-200 ${
               feedType === 'following'
                 ? 'bg-accent-beige text-dark-bg'
-                : 'text-beige-text hover:text-white'
+                : 'text-beige-text hover:text-beige-text/80'
             }`}
             data-testid="tab-following"
           >
