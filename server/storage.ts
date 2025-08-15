@@ -200,12 +200,26 @@ export class MemStorage implements IStorage {
       bio: insertUser.bio || "",
       isAI: insertUser.isAI || false,
       id,
-      createdAt: new Date()
+      createdAt: new Date(),
     };
     this.users.set(id, user);
     return user;
   }
 
+  async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
+    const user = this.users.get(id);
+    if (!user) return undefined;
+    
+    const updatedUser = { ...user, ...updates };
+    this.users.set(id, updatedUser);
+    return updatedUser;
+  }
+
+  async deleteUser(id: string): Promise<boolean> {
+    return this.users.delete(id);
+  }
+
+  // Post methods
   async getPosts(offset: number, limit: number): Promise<PostWithAuthor[]> {
     const allPosts = Array.from(this.posts.values())
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
@@ -216,7 +230,46 @@ export class MemStorage implements IStorage {
       return {
         ...post,
         author: author!,
-        isLiked: false // Will be updated based on current user
+        isLiked: false,
+        isBookmarked: false
+      };
+    });
+  }
+
+  async getFollowingPosts(userId: string, offset: number, limit: number): Promise<PostWithAuthor[]> {
+    const followingIds = Array.from(this.follows.values())
+      .filter(follow => follow.followerId === userId)
+      .map(follow => follow.followingId);
+
+    const followingPosts = Array.from(this.posts.values())
+      .filter(post => followingIds.includes(post.authorId))
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(offset, offset + limit);
+
+    return followingPosts.map(post => {
+      const author = this.users.get(post.authorId);
+      return {
+        ...post,
+        author: author!,
+        isLiked: false,
+        isBookmarked: false
+      };
+    });
+  }
+
+  async getUserPosts(userId: string, offset: number, limit: number): Promise<PostWithAuthor[]> {
+    const userPosts = Array.from(this.posts.values())
+      .filter(post => post.authorId === userId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(offset, offset + limit);
+
+    return userPosts.map(post => {
+      const author = this.users.get(post.authorId);
+      return {
+        ...post,
+        author: author!,
+        isLiked: false,
+        isBookmarked: false
       };
     });
   }
@@ -224,14 +277,13 @@ export class MemStorage implements IStorage {
   async getPost(id: string): Promise<PostWithAuthor | undefined> {
     const post = this.posts.get(id);
     if (!post) return undefined;
-
+    
     const author = this.users.get(post.authorId);
-    if (!author) return undefined;
-
     return {
       ...post,
-      author,
-      isLiked: false
+      author: author!,
+      isLiked: false,
+      isBookmarked: false
     };
   }
 
@@ -243,57 +295,35 @@ export class MemStorage implements IStorage {
       authorId,
       likeCount: 0,
       commentCount: 0,
-      createdAt: new Date()
+      createdAt: new Date(),
     };
     this.posts.set(id, post);
     return post;
   }
 
-  async deletePost(postId: string, userId: string): Promise<boolean> {
+  async updatePost(postId: string, userId: string, content: string): Promise<boolean> {
     const post = this.posts.get(postId);
-    if (!post || post.authorId !== userId) {
-      return false; // Can only delete own posts
-    }
+    if (!post || post.authorId !== userId) return false;
     
-    // Delete the post
-    this.posts.delete(postId);
-    
-    // Delete related comments
-    const postComments = Array.from(this.comments.values()).filter(comment => comment.postId === postId);
-    postComments.forEach(comment => this.comments.delete(comment.id));
-    
-    // Delete related likes
-    const postLikes = Array.from(this.likes.values()).filter(like => like.postId === postId);
-    postLikes.forEach(like => this.likes.delete(like.id));
-    
+    const updatedPost = { ...post, content };
+    this.posts.set(postId, updatedPost);
     return true;
   }
 
-  async getFollowingPosts(userId: string, offset: number, limit: number): Promise<PostWithAuthor[]> {
-    const followingIds = await this.getFollowingIds(userId);
-    followingIds.push(userId); // Include own posts
+  async deletePost(postId: string, userId: string): Promise<boolean> {
+    const post = this.posts.get(postId);
+    if (!post || post.authorId !== userId) return false;
     
-    const followingPosts = Array.from(this.posts.values())
-      .filter(post => followingIds.includes(post.authorId))
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(offset, offset + limit);
-
-    return followingPosts.map(post => {
-      const author = this.users.get(post.authorId);
-      return {
-        ...post,
-        author: author!,
-        isLiked: false // Will be updated based on current user
-      };
-    });
+    return this.posts.delete(postId);
   }
 
+  // Comment methods
   async getCommentsByPostId(postId: string): Promise<CommentWithAuthor[]> {
-    const postComments = Array.from(this.comments.values())
+    const comments = Array.from(this.comments.values())
       .filter(comment => comment.postId === postId)
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 
-    return postComments.map(comment => {
+    return comments.map(comment => {
       const author = this.users.get(comment.authorId);
       return {
         ...comment,
@@ -310,47 +340,69 @@ export class MemStorage implements IStorage {
       id,
       authorId,
       likeCount: 0,
-      createdAt: new Date()
+      createdAt: new Date(),
     };
     this.comments.set(id, comment);
-
-    // Update comment count for the post
+    
+    // Update comment count on post
     const post = this.posts.get(insertComment.postId);
     if (post) {
-      post.commentCount += 1;
-      this.posts.set(post.id, post);
+      const updatedPost = { ...post, commentCount: post.commentCount + 1 };
+      this.posts.set(insertComment.postId, updatedPost);
     }
-
+    
     return comment;
   }
 
+  async deleteComment(commentId: string, userId: string): Promise<boolean> {
+    const comment = this.comments.get(commentId);
+    if (!comment || comment.authorId !== userId) return false;
+    
+    // Update comment count on post
+    const post = this.posts.get(comment.postId);
+    if (post) {
+      const updatedPost = { ...post, commentCount: post.commentCount - 1 };
+      this.posts.set(comment.postId, updatedPost);
+    }
+    
+    return this.comments.delete(commentId);
+  }
+
+  // Like methods
   async togglePostLike(userId: string, postId: string): Promise<boolean> {
     const existingLike = Array.from(this.likes.values()).find(
       like => like.userId === userId && like.postId === postId
     );
 
-    const post = this.posts.get(postId);
-    if (!post) return false;
-
     if (existingLike) {
-      // Remove like
+      // Unlike
       this.likes.delete(existingLike.id);
-      post.likeCount = Math.max(0, post.likeCount - 1);
-      this.posts.set(postId, post);
+      
+      const post = this.posts.get(postId);
+      if (post) {
+        const updatedPost = { ...post, likeCount: post.likeCount - 1 };
+        this.posts.set(postId, updatedPost);
+      }
+      
       return false;
     } else {
-      // Add like
-      const likeId = randomUUID();
+      // Like
+      const id = randomUUID();
       const like: Like = {
-        id: likeId,
+        id,
         userId,
         postId,
         commentId: null,
-        createdAt: new Date()
+        createdAt: new Date(),
       };
-      this.likes.set(likeId, like);
-      post.likeCount += 1;
-      this.posts.set(postId, post);
+      this.likes.set(id, like);
+      
+      const post = this.posts.get(postId);
+      if (post) {
+        const updatedPost = { ...post, likeCount: post.likeCount + 1 };
+        this.posts.set(postId, updatedPost);
+      }
+      
       return true;
     }
   }
@@ -360,28 +412,35 @@ export class MemStorage implements IStorage {
       like => like.userId === userId && like.commentId === commentId
     );
 
-    const comment = this.comments.get(commentId);
-    if (!comment) return false;
-
     if (existingLike) {
-      // Remove like
+      // Unlike
       this.likes.delete(existingLike.id);
-      comment.likeCount = Math.max(0, comment.likeCount - 1);
-      this.comments.set(commentId, comment);
+      
+      const comment = this.comments.get(commentId);
+      if (comment) {
+        const updatedComment = { ...comment, likeCount: comment.likeCount - 1 };
+        this.comments.set(commentId, updatedComment);
+      }
+      
       return false;
     } else {
-      // Add like
-      const likeId = randomUUID();
+      // Like
+      const id = randomUUID();
       const like: Like = {
-        id: likeId,
+        id,
         userId,
         postId: null,
         commentId,
-        createdAt: new Date()
+        createdAt: new Date(),
       };
-      this.likes.set(likeId, like);
-      comment.likeCount += 1;
-      this.comments.set(commentId, comment);
+      this.likes.set(id, like);
+      
+      const comment = this.comments.get(commentId);
+      if (comment) {
+        const updatedComment = { ...comment, likeCount: comment.likeCount + 1 };
+        this.comments.set(commentId, updatedComment);
+      }
+      
       return true;
     }
   }
@@ -390,7 +449,8 @@ export class MemStorage implements IStorage {
     return Array.from(this.likes.values()).filter(like => like.userId === userId);
   }
 
-  async searchUsers(query: string, currentUserId: string, limit: number = 10): Promise<UserWithFollowInfo[]> {
+  // Follow methods
+  async searchUsers(query: string, currentUserId: string, limit: number): Promise<UserWithFollowInfo[]> {
     const users = Array.from(this.users.values())
       .filter(user => 
         user.id !== currentUserId && 
@@ -410,7 +470,7 @@ export class MemStorage implements IStorage {
       const followingCount = Array.from(this.follows.values()).filter(
         follow => follow.followerId === user.id
       ).length;
-
+      
       return {
         ...user,
         isFollowing,
@@ -421,8 +481,6 @@ export class MemStorage implements IStorage {
   }
 
   async toggleFollow(followerId: string, followingId: string): Promise<boolean> {
-    if (followerId === followingId) return false;
-
     const existingFollow = Array.from(this.follows.values()).find(
       follow => follow.followerId === followerId && follow.followingId === followingId
     );
@@ -433,14 +491,14 @@ export class MemStorage implements IStorage {
       return false;
     } else {
       // Follow
-      const followId = randomUUID();
+      const id = randomUUID();
       const follow: Follow = {
-        id: followId,
+        id,
         followerId,
         followingId,
-        createdAt: new Date()
+        createdAt: new Date(),
       };
-      this.follows.set(followId, follow);
+      this.follows.set(id, follow);
       return true;
     }
   }
@@ -450,7 +508,7 @@ export class MemStorage implements IStorage {
       .filter(follow => follow.followingId === userId)
       .map(follow => follow.followerId);
 
-    return followerIds.map(id => this.users.get(id)).filter(user => user !== undefined) as User[];
+    return followerIds.map(id => this.users.get(id)!).filter(Boolean);
   }
 
   async getFollowing(userId: string): Promise<User[]> {
@@ -458,7 +516,7 @@ export class MemStorage implements IStorage {
       .filter(follow => follow.followerId === userId)
       .map(follow => follow.followingId);
 
-    return followingIds.map(id => this.users.get(id)).filter(user => user !== undefined) as User[];
+    return followingIds.map(id => this.users.get(id)!).filter(Boolean);
   }
 
   async getFollowingIds(userId: string): Promise<string[]> {
@@ -467,108 +525,26 @@ export class MemStorage implements IStorage {
       .map(follow => follow.followingId);
   }
 
-  // New methods to implement interface
-  async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
-    const user = this.users.get(id);
-    if (!user) return undefined;
-    
-    const updatedUser = { ...user, ...updates };
-    this.users.set(id, updatedUser);
-    return updatedUser;
-  }
-
-  async deleteUser(id: string): Promise<boolean> {
-    const user = this.users.get(id);
-    if (!user) return false;
-    
-    // Delete user's posts
-    const userPosts = Array.from(this.posts.values()).filter(post => post.authorId === id);
-    userPosts.forEach(post => this.posts.delete(post.id));
-    
-    // Delete user's comments
-    const userComments = Array.from(this.comments.values()).filter(comment => comment.authorId === id);
-    userComments.forEach(comment => this.comments.delete(comment.id));
-    
-    // Delete user's likes
-    const userLikes = Array.from(this.likes.values()).filter(like => like.userId === id);
-    userLikes.forEach(like => this.likes.delete(like.id));
-    
-    // Delete user's follows
-    const userFollows = Array.from(this.follows.values()).filter(follow => 
-      follow.followerId === id || follow.followingId === id);
-    userFollows.forEach(follow => this.follows.delete(follow.id));
-    
-    // Delete user's bookmarks
-    const userBookmarks = Array.from(this.bookmarks.values()).filter(bookmark => bookmark.userId === id);
-    userBookmarks.forEach(bookmark => this.bookmarks.delete(bookmark.id));
-    
-    // Delete user's notifications
-    const userNotifications = Array.from(this.notifications.values()).filter(notification => notification.userId === id);
-    userNotifications.forEach(notification => this.notifications.delete(notification.id));
-    
-    this.users.delete(id);
-    return true;
-  }
-
-  async getUserPosts(userId: string, offset: number, limit: number): Promise<PostWithAuthor[]> {
-    const userPosts = Array.from(this.posts.values())
-      .filter(post => post.authorId === userId)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(offset, offset + limit);
-
-    return userPosts.map(post => {
-      const author = this.users.get(post.authorId);
-      return {
-        ...post,
-        author: author!,
-        isLiked: false, // Will be updated based on current user
-        isBookmarked: false
-      };
-    });
-  }
-
-  async updatePost(postId: string, userId: string, content: string): Promise<boolean> {
-    const post = this.posts.get(postId);
-    if (!post || post.authorId !== userId) return false;
-    
-    post.content = content;
-    this.posts.set(postId, post);
-    return true;
-  }
-
-  async deleteComment(commentId: string, userId: string): Promise<boolean> {
-    const comment = this.comments.get(commentId);
-    if (!comment || comment.authorId !== userId) return false;
-    
-    this.comments.delete(commentId);
-    
-    // Update comment count for the post
-    const post = this.posts.get(comment.postId);
-    if (post) {
-      post.commentCount = Math.max(0, post.commentCount - 1);
-      this.posts.set(post.id, post);
-    }
-    
-    return true;
-  }
-
+  // Bookmark methods
   async toggleBookmark(userId: string, postId: string): Promise<boolean> {
     const existingBookmark = Array.from(this.bookmarks.values()).find(
       bookmark => bookmark.userId === userId && bookmark.postId === postId
     );
 
     if (existingBookmark) {
+      // Remove bookmark
       this.bookmarks.delete(existingBookmark.id);
       return false;
     } else {
-      const bookmarkId = randomUUID();
+      // Add bookmark
+      const id = randomUUID();
       const bookmark: Bookmark = {
-        id: bookmarkId,
+        id,
         userId,
         postId,
-        createdAt: new Date()
+        createdAt: new Date(),
       };
-      this.bookmarks.set(bookmarkId, bookmark);
+      this.bookmarks.set(id, bookmark);
       return true;
     }
   }
@@ -576,23 +552,22 @@ export class MemStorage implements IStorage {
   async getUserBookmarks(userId: string, offset: number, limit: number): Promise<PostWithAuthor[]> {
     const userBookmarks = Array.from(this.bookmarks.values())
       .filter(bookmark => bookmark.userId === userId)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .slice(offset, offset + limit);
 
-    const bookmarkedPosts = userBookmarks.map(bookmark => this.posts.get(bookmark.postId))
-      .filter(post => post !== undefined) as Post[];
-
-    return bookmarkedPosts.map(post => {
-      const author = this.users.get(post.authorId);
+    return userBookmarks.map(bookmark => {
+      const post = this.posts.get(bookmark.postId);
+      const author = this.users.get(post!.authorId);
       return {
-        ...post,
+        ...post!,
         author: author!,
-        isLiked: false, // Will be updated based on current user
+        isLiked: false,
         isBookmarked: true
       };
     });
   }
 
+  // Notification methods
   async createNotification(userId: string, type: string, message: string, relatedPostId?: string, relatedUserId?: string): Promise<Notification> {
     const id = randomUUID();
     const notification: Notification = {
@@ -603,7 +578,7 @@ export class MemStorage implements IStorage {
       relatedPostId: relatedPostId || null,
       relatedUserId: relatedUserId || null,
       read: false,
-      createdAt: new Date()
+      createdAt: new Date(),
     };
     this.notifications.set(id, notification);
     return notification;
@@ -612,7 +587,7 @@ export class MemStorage implements IStorage {
   async getUserNotifications(userId: string, offset: number, limit: number): Promise<Notification[]> {
     return Array.from(this.notifications.values())
       .filter(notification => notification.userId === userId)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .slice(offset, offset + limit);
   }
 
@@ -620,21 +595,22 @@ export class MemStorage implements IStorage {
     const notification = this.notifications.get(notificationId);
     if (!notification || notification.userId !== userId) return false;
     
-    notification.read = true;
-    this.notifications.set(notificationId, notification);
+    const updatedNotification = { ...notification, read: true };
+    this.notifications.set(notificationId, updatedNotification);
     return true;
   }
 
   async markAllNotificationsAsRead(userId: string): Promise<boolean> {
-    const userNotifications = Array.from(this.notifications.values())
-      .filter(notification => notification.userId === userId && !notification.read);
-    
-    userNotifications.forEach(notification => {
-      notification.read = true;
-      this.notifications.set(notification.id, notification);
-    });
-    
-    return true;
+    let updated = false;
+    const notificationsArray = Array.from(this.notifications.values());
+    for (const notification of notificationsArray) {
+      if (notification.userId === userId && !notification.read) {
+        const updatedNotification = { ...notification, read: true };
+        this.notifications.set(notification.id, updatedNotification);
+        updated = true;
+      }
+    }
+    return updated;
   }
 
   async getUnreadNotificationCount(userId: string): Promise<number> {
@@ -643,6 +619,7 @@ export class MemStorage implements IStorage {
       .length;
   }
 
+  // Analytics methods
   async getUserStats(userId: string): Promise<PostStats> {
     const userPosts = Array.from(this.posts.values()).filter(post => post.authorId === userId);
     const totalPosts = userPosts.length;
@@ -654,24 +631,16 @@ export class MemStorage implements IStorage {
       totalPosts,
       totalLikes,
       totalComments,
-      engagement: Math.round(engagement * 100) / 100
+      engagement
     };
   }
 
   async getTrendingPosts(limit: number): Promise<PostWithAuthor[]> {
-    const posts = Array.from(this.posts.values())
-      .sort((a, b) => {
-        // Sort by engagement score (likes + comments) and recency
-        const scoreA = a.likeCount + a.commentCount;
-        const scoreB = b.likeCount + b.commentCount;
-        if (scoreA === scoreB) {
-          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-        }
-        return scoreB - scoreA;
-      })
+    const sortedPosts = Array.from(this.posts.values())
+      .sort((a, b) => (b.likeCount + b.commentCount) - (a.likeCount + a.commentCount))
       .slice(0, limit);
 
-    return posts.map(post => {
+    return sortedPosts.map(post => {
       const author = this.users.get(post.authorId);
       return {
         ...post,
@@ -683,4 +652,15 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+import { PostgreSQLStorage } from './postgres-storage.js';
+
+// Create storage instance - use PostgreSQL if DATABASE_URL is available, otherwise use memory storage  
+function createStorage(): IStorage {
+  if (process.env.DATABASE_URL) {
+    return new PostgreSQLStorage();
+  } else {
+    return new MemStorage();
+  }
+}
+
+export const storage = createStorage();
