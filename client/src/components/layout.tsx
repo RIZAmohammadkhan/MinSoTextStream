@@ -83,12 +83,24 @@ export default function Layout({ children, user, onLogout }: LayoutProps) {
     }
   };
 
-  const getNavButtonClass = (path: string) => 
-    `relative transition-all duration-300 ${location === path ? 'text-accent-beige' : 'text-beige-text hover:text-accent-beige'}`;
+  const getNavButtonClass = (path: string) => {
+    // For URL matching, only compare the pathname without query parameters
+    const currentPath = location.split('?')[0];
+    return `relative transition-all duration-300 ${currentPath === path ? 'text-accent-beige' : 'text-beige-text hover:text-accent-beige'}`;
+  };
 
   const createNavButton = (path: string, icon: React.ReactNode, title: string, badge?: React.ReactNode) => (
     <button
-      onClick={() => setLocation(path)}
+      onClick={() => {
+        // For messages page, ensure we navigate to clean URL without parameters
+        if (path === '/messages') {
+          setLocation('/messages');
+          // Also clear any query parameters from browser history
+          window.history.replaceState({}, '', '/messages');
+        } else {
+          setLocation(path);
+        }
+      }}
       className={getNavButtonClass(path)}
     >
       <div className="relative flex items-center justify-center" title={title}>

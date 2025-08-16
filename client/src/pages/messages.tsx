@@ -63,33 +63,74 @@ export default function MessagesPage({ user, onLogout }: MessagesPageProps) {
     const conversationId = urlParams.get('conversation');
     const userId = urlParams.get('user');
 
+    // Clear any previous dialog state first
+    setShowNewConversation(false);
+    setSelectedUser(null);
+    setSearchQuery("");
+
     if (conversationId) {
       setSelectedConversation(conversationId);
       // Clear URL params
       window.history.replaceState({}, '', '/messages');
     } else if (userId) {
-      // Find user and start new conversation
-      const fetchUser = async () => {
+      // Try to find existing conversation or start new one directly
+      const handleDirectMessage = async () => {
         try {
           const sessionId = localStorage.getItem('minso_session');
-          const response = await fetch(`/api/users/${userId}`, {
+          
+          // First, try to find existing conversation
+          const conversationsResponse = await fetch('/api/dm/conversations', {
             headers: {
               'Authorization': `Bearer ${sessionId}`
             }
           });
-          if (response.ok) {
-            const userData = await response.json();
-            setSelectedUser(userData);
-            setShowNewConversation(true);
-            // Clear URL params
-            window.history.replaceState({}, '', '/messages');
+
+          if (conversationsResponse.ok) {
+            const conversations = await conversationsResponse.json();
+            const existingConversation = conversations.find((conv: any) => 
+              conv.participant.id === userId
+            );
+
+            if (existingConversation) {
+              // Found existing conversation, select it
+              setSelectedConversation(existingConversation.id);
+              window.history.replaceState({}, '', '/messages');
+              return;
+            }
           }
+
+          // No existing conversation, fetch user and set them as selected user for new conversation
+          const userResponse = await fetch(`/api/users/${userId}`, {
+            headers: {
+              'Authorization': `Bearer ${sessionId}`
+            }
+          });
+
+          if (userResponse.ok) {
+            const userData = await userResponse.json();
+            // Set selected user so they can start typing immediately
+            setSelectedUser(userData);
+          }
+
+          // Clear URL params
+          window.history.replaceState({}, '', '/messages');
         } catch (error) {
-          console.error('Error fetching user for DM:', error);
+          console.error('Error handling direct message:', error);
+          // Clear URL params even on error
+          window.history.replaceState({}, '', '/messages');
         }
       };
-      fetchUser();
+      handleDirectMessage();
     }
+  }, []);
+
+  // Cleanup effect to reset dialog state when component unmounts
+  useEffect(() => {
+    return () => {
+      setShowNewConversation(false);
+      setSelectedUser(null);
+      setSearchQuery("");
+    };
   }, []);
 
   const scrollToBottom = () => {
@@ -260,7 +301,14 @@ export default function MessagesPage({ user, onLogout }: MessagesPageProps) {
                     <MessageCircle size={20} className="text-accent-beige" />
                     <CardTitle className="text-xl text-beige-text">Messages</CardTitle>
                   </div>
-                  <Dialog open={showNewConversation} onOpenChange={setShowNewConversation}>
+                  <Dialog open={showNewConversation} onOpenChange={(open) => {
+                    setShowNewConversation(open);
+                    if (!open) {
+                      // Reset all dialog-related states when closing
+                      setSelectedUser(null);
+                      setSearchQuery("");
+                    }
+                  }}>
                     <DialogTrigger asChild>
                       <Button size="sm" className="bg-accent-beige text-dark-bg hover:bg-accent-beige/90 flex items-center gap-1">
                         <Plus size={16} />

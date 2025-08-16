@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Search, UserPlus, UserCheck } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Search, UserPlus, UserCheck, X } from "lucide-react";
 import Layout from "../components/layout";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -16,16 +16,42 @@ interface SearchPageProps {
 
 export default function SearchPage({ user, onLogout }: SearchPageProps) {
   const [searchQuery, setSearchQuery] = useState("");
-    const queryClient = useQueryClient();
+  const queryClient = useQueryClient();
   const [, navigate] = useLocation();
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-focus the search input when the page loads
+  useEffect(() => {
+    if (searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, []);
+
+  // Handle keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Focus search input when pressing '/' key
+      if (e.key === '/' && e.target !== searchInputRef.current) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+      // Clear search when pressing Escape
+      if (e.key === 'Escape' && searchInputRef.current === document.activeElement) {
+        setSearchQuery("");
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const { data: searchResults, isLoading } = useQuery({
     queryKey: ['/api/users/search', searchQuery],
     queryFn: async () => {
-      if (!searchQuery.trim()) return [];
+      if (!searchQuery.trim() || searchQuery.trim().length < 2) return [];
       
       const sessionId = localStorage.getItem('minso_session');
-      const response = await fetch(`/api/users/search?q=${encodeURIComponent(searchQuery)}`, {
+      const response = await fetch(`/api/users/search?q=${encodeURIComponent(searchQuery.trim())}`, {
         headers: {
           'Authorization': `Bearer ${sessionId}`
         }
@@ -37,7 +63,7 @@ export default function SearchPage({ user, onLogout }: SearchPageProps) {
       
       return response.json();
     },
-    enabled: searchQuery.trim().length > 0,
+    enabled: searchQuery.trim().length >= 2,
   });
 
   const followUserMutation = useMutation({
@@ -69,25 +95,44 @@ export default function SearchPage({ user, onLogout }: SearchPageProps) {
       <main className="max-w-3xl mx-auto px-6 py-12">
         <div className="mb-12">
           <h1 className="text-3xl font-bold text-accent-beige mb-6">Discover Users</h1>
+          <p className="text-beige-text/70 mb-2">Search for users to connect with on MinSO</p>
+          <p className="text-sm text-beige-text/50">💡 Tip: Press <kbd className="px-2 py-1 bg-dark-bg border border-subtle-border rounded text-xs">/</kbd> to focus search, <kbd className="px-2 py-1 bg-dark-bg border border-subtle-border rounded text-xs">Esc</kbd> to clear</p>
           
           {/* Search Form */}
           <form onSubmit={handleSearch} className="mb-8">
             <div className="relative">
               <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-beige-text/50" size={20} />
               <Input
+                ref={searchInputRef}
                 type="text"
                 placeholder="Search users by username..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-12 pr-4 py-4 text-lg bg-dark-bg border-subtle-border text-beige-text placeholder-beige-text/40 rounded-lg"
+                className="pl-12 pr-12 py-4 text-lg bg-dark-bg border-subtle-border text-beige-text placeholder-beige-text/40 rounded-lg"
                 data-testid="input-search"
               />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-4 top-1/2 transform -translate-y-1/2 text-beige-text/50 hover:text-beige-text transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              )}
             </div>
           </form>
         </div>
 
         {/* Search Results */}
-        {isLoading && searchQuery.trim() && (
+        {searchQuery.trim() && searchQuery.trim().length < 2 && (
+          <div className="text-center py-12">
+            <Search className="mx-auto mb-4 text-accent-beige/60" size={32} />
+            <div className="text-beige-text/60 text-lg">Type at least 2 characters to search</div>
+          </div>
+        )}
+
+        {isLoading && searchQuery.trim().length >= 2 && (
           <div className="space-y-6">
             {[...Array(3)].map((_, i) => (
               <div key={i} className="border border-subtle-border rounded-lg p-6 animate-pulse">
@@ -101,6 +146,14 @@ export default function SearchPage({ user, onLogout }: SearchPageProps) {
                 <div className="mt-4 h-4 w-3/4 bg-subtle-border rounded"></div>
               </div>
             ))}
+          </div>
+        )}
+
+        {searchResults && searchResults.length > 0 && (
+          <div className="mb-6">
+            <div className="text-sm text-beige-text/60">
+              Found {searchResults.length} user{searchResults.length === 1 ? '' : 's'} for "{searchQuery.trim()}"
+            </div>
           </div>
         )}
 
@@ -186,7 +239,7 @@ export default function SearchPage({ user, onLogout }: SearchPageProps) {
           </div>
         )}
 
-        {searchQuery.trim() && searchResults && searchResults.length === 0 && !isLoading && (
+        {searchQuery.trim().length >= 2 && searchResults && searchResults.length === 0 && !isLoading && (
           <div className="text-center py-20">
             <div className="text-beige-text/60 text-xl mb-2">No users found</div>
             <div className="text-beige-text/40 text-lg">Try searching for a different username</div>
@@ -197,7 +250,10 @@ export default function SearchPage({ user, onLogout }: SearchPageProps) {
           <div className="text-center py-20">
             <Search className="mx-auto mb-6 text-beige-text/40" size={48} />
             <div className="text-beige-text/60 text-xl mb-2">Search for users</div>
-            <div className="text-beige-text/40 text-lg">Discover and connect with other humans and AI</div>
+            <div className="text-beige-text/40 text-lg mb-4">Discover and connect with other humans and AI</div>
+            <div className="text-sm text-beige-text/30">
+              Start typing in the search box above to find users by username
+            </div>
           </div>
         )}
       </main>

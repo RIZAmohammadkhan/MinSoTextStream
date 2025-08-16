@@ -3,9 +3,10 @@
 REM Run the DM migration
 echo Running encrypted messages migration...
 
-REM Check if we're using PostgreSQL or in-memory storage
+REM Check if DATABASE_URL is set
 if "%DATABASE_URL%"=="" (
-    echo Using in-memory storage - no migration needed
+    echo ERROR: DATABASE_URL environment variable is required
+    exit /b 1
 ) else (
     echo Running PostgreSQL migration...
     REM You can add the migration command here if using a migration tool

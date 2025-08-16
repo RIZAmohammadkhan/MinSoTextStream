@@ -3,7 +3,6 @@ import { useLocation } from "wouter";
 import Layout from "../components/layout";
 import { Bell, Heart, MessageCircle, UserPlus, Bookmark, Check, CheckCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { notifications } from "@/lib/notifications";
 import type { Notification } from "@shared/schema";
 
 interface NotificationsPageProps {
@@ -58,7 +57,6 @@ export default function NotificationsPage({ user, onLogout }: NotificationsPageP
       queryClient.invalidateQueries({ queryKey: ['/api/notifications/unread-count'] });
     },
     onError: (error: any) => {
-      notifications.error("Error", error.message || "Failed to mark notification as read");
     },
   });
 
@@ -80,10 +78,8 @@ export default function NotificationsPage({ user, onLogout }: NotificationsPageP
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/notifications'] });
       queryClient.invalidateQueries({ queryKey: ['/api/notifications/unread-count'] });
-      notifications.success("Success", "All notifications marked as read");
     },
     onError: (error: any) => {
-      notifications.error("Error", error.message || "Failed to mark all notifications as read");
     },
   });
 
