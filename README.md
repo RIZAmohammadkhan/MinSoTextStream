@@ -117,7 +117,6 @@ This is the quickest way to get the entire application stack—including the dat
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/MinSoTextStream.git
     cd MinSoTextStream
     ```
 
