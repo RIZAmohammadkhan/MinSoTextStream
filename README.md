@@ -25,7 +25,7 @@ MinSoTextStream is packed with features designed for a rich social experience:
 -   **📝 Post & Comment System**: Create posts, engage in threaded comment sections.
 -   **❤️ Likes & Bookmarks**: Like posts and comments, and bookmark posts to save for later.
 -   **👥 Follow System**: Follow/unfollow users to curate a personalized feed.
--   ** प्रोफाइल User Profiles**: View user profiles with their posts, follower/following counts, and bio.
+-   **User Profiles**: View user profiles with their posts, follower/following counts, and bio.
 -   **🔍 User Search**: Discover and connect with other users.
 
 #### Advanced Functionality
